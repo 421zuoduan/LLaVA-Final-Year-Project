@@ -39,3 +39,6 @@ model
 
 # eval-datasets
 playground/data/eval
+
+# original code of semantic entropy
+semantic_uncertainty/

@@ -15,6 +15,9 @@ from llava.conversation import conv_templates, SeparatorStyle
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
 
+from uncertainty.uncertainty_measures.semantic_entropy import EntailmentDeepSeek
+from uncertainty.uncertainty_measures.semantic_entropy import UncertaintyMeasures
+
 def convert_dict_to_tensor(results, device):
     part_tensor = json.dumps(results)
     part_tensor = torch.Tensor([ord(part_tensor[i]) for i in range(len(part_tensor))]).long().to(device)
@@ -52,7 +55,6 @@ def main(args):
         questions_file = open(os.path.join(args.pope_path, "output/coco/coco_pope_random.json"), "r")
     elif args.set == "popular":
         questions_file = open(os.path.join(args.pope_path, "output/coco/coco_pope_popular.json"), "r")
-        ground_truth_answer_file=open(os.path.join(args.pope_path, "/home/wuzongqian/xubaoduo/old_version/ha_dpo/data/POPE/output/coco/coco_pope_popular.json"), "r")
     elif args.set == "adv":
         questions_file = open(os.path.join(args.pope_path, "output/coco/coco_pope_adversarial.json"), "r")
     lines = list(questions_file.readlines())
@@ -111,15 +113,77 @@ def main(args):
         keywords = [stop_str]
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
 
+        # args for entailment model
+        num_return_sequences = 1
+        return_entropies = False
+        return_uncertaity_measure = True
+        entailment_model = EntailmentDeepSeek(entailment_cache_id=None, entailment_cache_only=False)
+        uncertainty_computer = UncertaintyMeasures(question=message_input)
+
+        # with torch.inference_mode():
+        #     output_ids = model.generate(
+        #         input_ids,
+        #         images=image_tensor,
+        #         do_sample=False,
+        #         temperature=1.0,
+        #         max_new_tokens=512,
+        #         use_cache=True,
+        #         stopping_criteria=[stopping_criteria])
+        
         with torch.inference_mode():
+            # output_ids = model.generate(
+            #     input_ids,
+            #     images=image_tensor,
+            #     do_sample=False,
+            #     temperature=1.0,
+            #     max_new_tokens=512,
+            #     use_cache=True,
+            #     stopping_criteria=[stopping_criteria])
+            
             output_ids = model.generate(
                 input_ids,
                 images=image_tensor,
-                do_sample=False,
+                do_sample=True,
                 temperature=1.0,
                 max_new_tokens=512,
                 use_cache=True,
-                stopping_criteria=[stopping_criteria])
+                stopping_criteria=[stopping_criteria],
+                # return_entropies=return_entropies
+                return_uncertaity_measure=return_uncertaity_measure,
+                num_return_sequences=num_return_sequences,
+                num_sampling_sequences=15*num_return_sequences,
+                output_scores=True,
+                output_hidden_states=True,
+                output_attentions=True,
+                return_dict_in_generate=True,
+                return_predictive_entropy=True,
+                entailment_model=entailment_model,
+                tokenizer=tokenizer,
+                uncertainty_computer=uncertainty_computer,
+                return_semantic_entropy=True,
+                )
+            
+        # return uncertainty measures
+        if return_uncertaity_measure:
+            # print(f"output_ids.entropies: {output_ids.entropies}")
+            responses = []
+            for seq in output_ids.sequences:
+                # print(f"seq.shape: {seq.shape}")
+                responses.append(tokenizer.decode(seq[input_ids.shape[1]:]).strip())            
+            tmp_dict={
+                "question": message_input,
+                "answer": responses,
+                "question_id": question_id,
+                "regular_entropy": output_ids.regular_entropy.cpu().item(), # 转换成浮点数
+                "regular_entropy_rao": output_ids.regular_entropy_rao.cpu().item(),
+                "cluster_assignment_entropy": output_ids.cluster_assignment_entropy,
+                "semantic_entropy": output_ids.semantic_entropy.cpu().item(),
+                # "regular_entropy_rao": output_ids.entropies['regular_entropy_rao'].cpu().item(),
+                "ground_truth_answer": ground_truth_answer_label[question_id],
+                # "is_correct": ground_truth_answer_label[question_id][0]==outputs[0].lower()
+            }
+            results.append(tmp_dict)
+            
 
         outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
         print(f"outputs: {outputs}")

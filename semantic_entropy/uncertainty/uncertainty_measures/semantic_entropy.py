@@ -13,6 +13,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from uncertainty.models.huggingface_models import HuggingfaceModel
 from uncertainty.utils import openai as oai
 from uncertainty.utils import utils
+from uncertainty.utils import deepseek
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -101,6 +102,25 @@ class EntailmentLLM(BaseEntailment):
         else:
             logging.warning('MANUAL NEUTRAL!')
             return 1
+        
+        
+class EntailmentDeepSeek(EntailmentLLM):
+    def __init__(self, entailment_cache_id, entailment_cache_only):
+        super().__init__(entailment_cache_id, entailment_cache_only)
+        self.name = 'deepseek-chat'
+
+    def equivalence_prompt(self, text1, text2, question):
+
+        prompt = f"""We are evaluating answers to the question \"{question}\"\n. This is a question in a Vision Question&Answer Dataset, but we don't provide the image here."""
+        prompt += "Here are two possible answers:\n"
+        prompt += f"Possible Answer 1: {text1}\nPossible Answer 2: {text2}\n"
+        prompt += "Does Possible Answer 1 semantically entail Possible Answer 2? Respond with entailment, contradiction, or neutral. Don't answer redundant content."""
+
+        return prompt
+
+    def predict(self, prompt, temperature):
+        # print(f"prompt: {prompt}")
+        return deepseek.predict(prompt, temperature, model=self.name)
 
 
 class EntailmentGPT4(EntailmentLLM):
@@ -268,3 +288,127 @@ def cluster_assignment_entropy(semantic_ids):
     assert np.isclose(probabilities.sum(), 1)
     entropy = - (probabilities * np.log(probabilities)).sum()
     return entropy
+
+
+
+# 将上面几个方法整合进一个类里, 方便方法的统一理解
+class UncertaintyMeasures:
+    def __init__(self, question):
+        self.question = question
+        
+    def context_entails_response(self, context, responses, model):
+        votes = []
+        for response in responses:
+            votes.append(model.check_implication(context, response))
+        return 2 - np.mean(votes)
+
+    def get_semantic_ids(self, strings_list, model, strict_entailment=False, example=None):
+        """Group list of predictions into semantic meaning."""
+
+        def are_equivalent(text1, text2):
+
+            implication_1 = model.check_implication(text1, text2, example=example)
+            implication_2 = model.check_implication(text2, text1, example=example)  # pylint: disable=arguments-out-of-order
+            assert (implication_1 in [0, 1, 2]) and (implication_2 in [0, 1, 2])
+
+            if strict_entailment:
+                semantically_equivalent = (implication_1 == 2) and (implication_2 == 2)
+
+            else:
+                implications = [implication_1, implication_2]
+                # Check if none of the implications are 0 (contradiction) and not both of them are neutral.
+                semantically_equivalent = (0 not in implications) and ([1, 1] != implications)
+
+            return semantically_equivalent
+
+        # Initialise all ids with -1.
+        semantic_set_ids = [-1] * len(strings_list)
+        # Keep track of current id.
+        next_id = 0
+        for i, string1 in enumerate(strings_list):
+            # Check if string1 already has an id assigned.
+            if semantic_set_ids[i] == -1:
+                # If string1 has not been assigned an id, assign it next_id.
+                semantic_set_ids[i] = next_id
+                for j in range(i+1, len(strings_list)):
+                    # Search through all remaining strings. If they are equivalent to string1, assign them the same id.
+                    are_equiv = are_equivalent(string1, strings_list[j])
+                    if are_equiv:
+                        semantic_set_ids[j] = next_id
+                    # print(f"string1: {string1[:3]}, strings_list[j]: {strings_list[j][:3]}, are_equivalent: {are_equiv}")
+                next_id += 1
+
+        assert -1 not in semantic_set_ids
+
+        return semantic_set_ids
+
+    def logsumexp_by_id(self, semantic_ids, log_likelihoods, agg='sum_normalized'):
+        """Sum probabilities with the same semantic id.
+
+        Log-Sum-Exp because input and output probabilities in log space.
+        """
+        unique_ids = sorted(list(set(semantic_ids)))
+        assert unique_ids == list(range(len(unique_ids)))
+        log_likelihood_per_semantic_id = []
+
+        for uid in unique_ids:
+            # Find positions in `semantic_ids` which belong to the active `uid`.
+            id_indices = [pos for pos, x in enumerate(semantic_ids) if x == uid]
+            # Gather log likelihoods at these indices.
+            id_log_likelihoods = torch.tensor([log_likelihoods[i] for i in id_indices])
+            if agg == 'sum_normalized':
+                # # log_lik_norm = id_log_likelihoods - np.prod(log_likelihoods)
+                # log_lik_norm = id_log_likelihoods - np.log(np.sum(np.exp(log_likelihoods)))
+                # logsumexp_value = np.log(np.sum(np.exp(log_lik_norm)))
+                
+                # log_lik_norm = id_log_likelihoods - torch.prod(log_likelihoods)
+                log_lik_norm = id_log_likelihoods - torch.log(torch.sum(torch.exp(log_likelihoods)))
+                logsumexp_value = torch.log(torch.sum(torch.exp(log_lik_norm)))
+            else:
+                raise ValueError
+            log_likelihood_per_semantic_id.append(logsumexp_value)
+
+        return log_likelihood_per_semantic_id
+
+    def predictive_entropy(self, log_probs):
+        """Compute MC estimate of entropy.
+
+        `E[-log p(x)] ~= -1/N sum_i log p(x_i)`, i.e. the average token likelihood.
+        """
+
+        # entropy = -np.sum(log_probs) / len(log_probs)
+        entropy = -torch.sum(log_probs) / len(log_probs)
+        return entropy
+
+
+    # def predictive_entropy_rao(log_probs):
+    #     entropy = -np.sum(np.exp(log_probs) * log_probs)
+    #     return entropy
+    def predictive_entropy_rao(self, log_probs):
+        # 使用 torch
+        # log_probs = torch.tensor(log_probs)
+        entropy = -torch.sum(torch.exp(log_probs) * log_probs)
+        return entropy
+    
+    def cluster_assignment_entropy(self, semantic_ids):
+        """Estimate semantic uncertainty from how often different clusters get assigned.
+
+        We estimate the categorical distribution over cluster assignments from the
+        semantic ids. The uncertainty is then given by the entropy of that
+        distribution. This estimate does not use token likelihoods, it relies soley
+        on the cluster assignments. If probability mass is spread of between many
+        clusters, entropy is larger. If probability mass is concentrated on a few
+        clusters, entropy is small.
+
+        Input:
+            semantic_ids: List of semantic ids, e.g. [0, 1, 2, 1].
+        Output:
+            cluster_entropy: Entropy, e.g. (-p log p).sum() for p = [1/4, 2/4, 1/4].
+        """
+
+        n_generations = len(semantic_ids)
+        counts = np.bincount(semantic_ids)
+        probabilities = counts/n_generations
+        assert np.isclose(probabilities.sum(), 1)
+        entropy = - (probabilities * np.log(probabilities)).sum()
+        return entropy

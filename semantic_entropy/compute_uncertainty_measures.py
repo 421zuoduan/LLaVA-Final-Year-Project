@@ -20,7 +20,7 @@ from uncertainty.uncertainty_measures.semantic_entropy import EntailmentGPT4
 from uncertainty.uncertainty_measures.semantic_entropy import EntailmentGPT35
 from uncertainty.uncertainty_measures.semantic_entropy import EntailmentGPT4Turbo
 from uncertainty.uncertainty_measures.semantic_entropy import EntailmentLlama
-from uncertainty.uncertainty_measures import p_true as p_true_utils
+from uncertainty.uncertainty_measures.p_true import p_true as p_true_utils
 from uncertainty.utils import utils
 
 

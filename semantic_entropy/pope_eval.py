@@ -49,12 +49,11 @@ def main(args):
     conv_mode = "llava_v1"
 
     if args.set == "random":
-        questions_file = open(os.path.join(args.pope_path, "output/coco/coco_pope_random.json"), "r")
+        questions_file = open(os.path.join("playground/data/eval/pope/coco/coco_pope_random.json"), "r")
     elif args.set == "popular":
-        questions_file = open(os.path.join(args.pope_path, "output/coco/coco_pope_popular.json"), "r")
-        ground_truth_answer_file=open(os.path.join(args.pope_path, "/home/wuzongqian/xubaoduo/old_version/ha_dpo/data/POPE/output/coco/coco_pope_popular.json"), "r")
+        questions_file = open(os.path.join("playground/data/eval/pope/coco/coco_pope_popular.json"), "r")
     elif args.set == "adv":
-        questions_file = open(os.path.join(args.pope_path, "output/coco/coco_pope_adversarial.json"), "r")
+        questions_file = open(os.path.join("playground/data/eval/pope/coco/coco_pope_adversarial.json"), "r")
     lines = list(questions_file.readlines())
     rank, word_size = int(os.environ["RANK"]), int(os.environ["WORLD_SIZE"])
     step = len(lines) // word_size + 1
@@ -63,18 +62,13 @@ def main(args):
     if int(os.environ["RANK"]) == 0:
         print("generating answers...")
         
-    ground_truth_answer_label={}
-    for item in ground_truth_answer_file.readlines():
-        item=json.loads(item)
-        ground_truth_answer_label[item['question_id']]=item['label']
-    
     results = []
     for line in tqdm.tqdm(lines[start:end]):
         data = json.loads(line)
         message_input = data["text"]
         image = data["image"]
         question_id = data["question_id"]
-        image = os.path.join(args.coco_path, "val2014", image)
+        image = os.path.join(args.coco_path, image)
         image = Image.open(image).convert("RGB")
         
         conv = conv_templates[conv_mode].copy()
@@ -110,11 +104,7 @@ def main(args):
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
         keywords = [stop_str]
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
-        num_beams = 7
-        num_return_sequences = num_beams
-        return_entropies = True
-        do_sample = False
-        num_sampling_sequences = 1 # 多次循环的句子数
+
         with torch.inference_mode():
             output_ids = model.generate(
                 input_ids,
@@ -123,56 +113,14 @@ def main(args):
                 temperature=1.0,
                 max_new_tokens=512,
                 use_cache=True,
-                # generate multiple sequences
-                num_return_sequences=num_return_sequences, 
-                num_beams=num_beams,
-                num_beam_groups=1,
-                stopping_criteria=[stopping_criteria],
-                return_entropies=return_entropies
-                )
-        # outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
-        # print(f"outputs: {outputs}")
-        # results.append({
-        #     "question": message_input,
-        #     "answer": outputs,
-        #     "question_id": question_id,
-        # })
-        if return_entropies: # 返回熵时只有一个输出句子
-            # if num_beams > 1:
-            #     outputs=[]
-            #     print(output_ids.sequences)
-            #     for output_id in output_ids.sequences:
-            #         print(output_id.shape)
-            #         output = tokenizer.decode(output_id[input_ids.shape[1]:]).strip()
-            #         outputs.append(output)
-            # else:                
-            outputs=tokenizer.decode(output_ids.sequences[input_ids.shape[1]:]).strip()
-            tmp_dict={
-                "question": message_input,
-                "answer": outputs,
-                "question_id": question_id,
-                "regular_entropy": output_ids.entropies['regular_entropy'].cpu().item(), # 转换成浮点数
-                "regular_entropy_rao": output_ids.entropies['regular_entropy_rao'].cpu().item(),
-                "ground_truth_answer": ground_truth_answer_label[question_id],
-                "is_correct": ground_truth_answer_label[question_id][0]==outputs[0].lower()
-            }
-            print(f"outputs: {outputs}")
-        else:
-            if num_beams > 1:
-                outputs=[]
-                for output_id in output_ids:
-                    output = tokenizer.decode(output_id[input_ids.shape[1]:]).strip()
-                    outputs.append(output)
-            else:
-                print(output_ids.shape)
-                outputs=tokenizer.decode(output_ids[0,input_ids.shape[1]:]).strip()
-            tmp_dict={
-                "question": message_input,
-                "answer": outputs,
-                "question_id": question_id,
-            }
-            print(f"outputs: {outputs}")
-        results.append(tmp_dict)
+                stopping_criteria=[stopping_criteria])
+
+        outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
+        results.append({
+            "question": message_input,
+            "answer": outputs,
+            "question_id": question_id,
+        })
         
     device = f"cuda:{torch.cuda.current_device()}"
     # convert dictionary -> tensor for gather all results in all ranks
@@ -198,7 +146,7 @@ def main(args):
         # sort according to question_id
         results_all_rank = sorted(results_all_rank, key=lambda x:x["question_id"])
         res_file = f"pope_{args.set}.jsonl"
-        with open(os.path.join("./post_interaction_block/models/llava-v1_5", res_file), "w") as f:
+        with open(os.path.join("./ha_dpo/models/llava-v1_5", res_file), "w") as f:
             for res in results_all_rank:
                 f.write(json.dumps(res)+'\n')
 
@@ -210,7 +158,7 @@ if __name__ == "__main__":
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
     
-    parser.add_argument("--pope_path", type=str, required=True)
+    # parser.add_argument("--pope_path", type=str, required=True)
     parser.add_argument("--coco_path", type=str, required=True)
     parser.add_argument("--set", type=str, required=True)
     args = parser.parse_args()

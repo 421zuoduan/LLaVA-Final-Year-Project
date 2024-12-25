@@ -1,7 +1,7 @@
 #!/bin/bash
 
 python -m llava.eval.model_vqa_loader \
-    --model-path /home/cuiruochen/model/llava-v1.5-7b \
+    --model-path /home/wuzongqian/model/llava-v1.5-7b \
     --question-file ./playground/data/eval/pope/llava_pope_test.jsonl \
     --image-folder ./playground/data/eval/pope/val2014 \
     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \

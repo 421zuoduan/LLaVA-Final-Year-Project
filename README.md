@@ -9,3 +9,9 @@ LLaVA-1.5 模型参数已经部署在 `/home/cuiruochen/model/llava-v1.5-7b` 路
 该仓库用于**尝试**提出一种不确定估计的改进方法. 此外还 Fork  `Lm-Polygraph` 来进行不同方法的比较. 目标是在 LLaVA 上跑通测试流程, 将自己的方法在两个仓库上都实现
 
 ## 可视化 Attention Values
+
+## Semantic Entropy 跑通
+
+
+
+

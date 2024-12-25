@@ -42,3 +42,6 @@ playground/data/eval
 
 # original code of semantic entropy
 semantic_uncertainty/
+
+# original shell script of pope eval
+semantic_entropy/scripts/hadpo_se.sh

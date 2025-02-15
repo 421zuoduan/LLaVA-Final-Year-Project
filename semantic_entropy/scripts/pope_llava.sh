@@ -3,7 +3,7 @@ python -m semantic_entropy.model_vqa_loader \
     --question-file ./playground/data/eval/pope/llava_pope_test.jsonl \
     --image-folder ./playground/data/eval/pope/val2014 \
     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
-    --temperature 0 \
+    --temperature 1 \
     --conv-mode vicuna_v1
 
 python llava/eval/eval_pope.py \

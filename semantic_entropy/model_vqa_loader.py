@@ -14,6 +14,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from PIL import Image
 import math
+import pickle
 
 
 def split_list(lst, n):
@@ -88,6 +89,11 @@ def eval_model(args):
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
     ans_file = open(answers_file, "w")
+    
+    # 新增：准备保存详细结果的字典和文件路径
+    json_output_path = os.path.join(os.path.dirname(answers_file), "detailed_results.json")
+    pkl_output_path = os.path.join(os.path.dirname(answers_file), "detailed_results.pkl")
+    generations = {}  # 存储所有问题的详细生成结果
 
     if 'plain' in model_name and 'finetune' not in model_name.lower() and 'mmtag' not in args.conv_mode:
         args.conv_mode = args.conv_mode + '_mmtag'
@@ -100,30 +106,79 @@ def eval_model(args):
         cur_prompt = line["text"]
 
         input_ids = input_ids.to(device='cuda', non_blocking=True)
+        
+        # Initialize storage for this question
+        generations[idx] = {
+            "question_id": idx,
+            "prompt": cur_prompt,
+            "responses": [],
+            "metadata": {"model": model_name}
+        }
 
-        with torch.inference_mode():
-            output_ids = model.generate(
-                input_ids,
-                images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
-                image_sizes=image_sizes,
-                do_sample=True if args.temperature > 0 else False,
-                temperature=args.temperature,
-                top_p=args.top_p,
-                num_beams=args.num_beams,
-                max_new_tokens=args.max_new_tokens,
-                use_cache=True)
+        # Generate 3 responses with sampling
+        for generation_idx in range(3):  # 三次多项式采样
+            with torch.inference_mode():
+                output_ids = model.generate(
+                    input_ids,
+                    images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
+                    image_sizes=image_sizes,
+                    do_sample=True if args.temperature > 0 else False,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    num_beams=args.num_beams,
+                    max_new_tokens=args.max_new_tokens,
+                    use_cache=True)
 
-        outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            # Decode and store
+            output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            generations[idx]["responses"].append(output_text)
 
-        ans_id = shortuuid.uuid()
-        ans_file.write(json.dumps({"question_id": idx,
-                                   "prompt": cur_prompt,
-                                   "text": outputs,
-                                   "answer_id": ans_id,
-                                   "model_id": model_name,
-                                   "metadata": {}}) + "\n")
-        # ans_file.flush()
+            # 写入原始答案文件（兼容原有格式）
+            ans_id = shortuuid.uuid()
+            ans_file.write(json.dumps({
+                "question_id": idx,
+                "prompt": cur_prompt,
+                "text": output_text,
+                "answer_id": ans_id,
+                "model_id": model_name,
+                "generation_idx": generation_idx,  # 新增字段标识生成序号
+                "metadata": {}
+            }) + "\n")
+
+
+        # with torch.inference_mode():
+        #     output_ids = model.generate(
+        #         input_ids,
+        #         images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
+        #         image_sizes=image_sizes,
+        #         do_sample=True if args.temperature > 0 else False,
+        #         temperature=args.temperature,
+        #         top_p=args.top_p,
+        #         num_beams=args.num_beams,
+        #         max_new_tokens=args.max_new_tokens,
+        #         use_cache=True)
+
+        # outputs = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+
+        # ans_id = shortuuid.uuid()
+        # ans_file.write(json.dumps({"question_id": idx,
+        #                            "prompt": cur_prompt,
+        #                            "text": outputs,
+        #                            "answer_id": ans_id,
+        #                            "model_id": model_name,
+        #                            "metadata": {}}) + "\n")
+        # # ans_file.flush()
     ans_file.close()
+    
+    # 保存详细结果到JSON和PKL
+    with open(json_output_path, "w") as f:
+        json.dump(generations, f, indent=2, ensure_ascii=False)
+    
+    with open(pkl_output_path, "wb") as f:
+        pickle.dump(generations, f)
+
+    print(f"Results saved to:\n- {answers_file}\n- {json_output_path}\n- {pkl_output_path}")
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

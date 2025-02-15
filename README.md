@@ -18,6 +18,26 @@ semantic entropy 仓库的 `generate_ans.py` 生成答案并保存在 pkl 文件
 
 ### 更改思路
 
-将各个数据集原本的代码里采样过程用 for 循环的方法改成多次多项式采样, 并将结果保存在 pkl 文件中, 然后调用语义熵的 `compute_uncertainty_measures.py` 读取 pkl 文件并计算语义熵.
+将各个数据集原本的代码里采样过程用 for 循环的方法改成多次多项式采样, 并将结果保存在 pkl 文件中, 保存的代码用语义熵的 `generate_answers.py`; 然后调用语义熵的 `compute_uncertainty_measures.py` 读取 pkl 文件并计算语义熵.
 
 
+### model_vqa_loader.py
+
+pope 的脚本命令是
+
+```
+python -m semantic_entropy.model_vqa_loader \
+    --model-path /home/wuzongqian/model/llava-v1.5-7b \
+    --question-file ./playground/data/eval/pope/llava_pope_test.jsonl \
+    --image-folder ./playground/data/eval/pope/val2014 \
+    --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
+    --temperature 0 \
+    --conv-mode vicuna_v1
+
+python llava/eval/eval_pope.py \
+    --annotation-dir ./playground/data/eval/pope/coco \
+    --question-file ./playground/data/eval/pope/llava_pope_test.jsonl \
+    --result-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl
+```
+
+这里 `python -m semantic_entropy.model_vqa_loader` 是一种运行模块的方式, 在 `sys.path` 查找 `semantic_entropy` 包中的文件; 如果 `model_vqa_loader` 中有主函数, 即执行主函数

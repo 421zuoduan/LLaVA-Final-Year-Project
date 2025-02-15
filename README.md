@@ -41,3 +41,8 @@ python llava/eval/eval_pope.py \
 ```
 
 这里 `python -m semantic_entropy.model_vqa_loader` 是一种运行模块的方式, 在 `sys.path` 查找 `semantic_entropy` 包中的文件; 如果 `model_vqa_loader` 中有主函数, 即执行主函数
+
+
+### 测试样本抽取
+
+pope 的问题数据来自 `playground/data/eval/pope/llava_pope_test.jsonl`, 其中 1-3000 行为 adversarial 数据, 3001-5910 行为 random 数据, 5911-8910 为 popular 数据. 全部近 9000 条样本跑一遍要 45min, 采样 3 次要 2h. 计划每一类取 10 个样本先把代码跑通, 然后每一类取 200 或 500 个样本

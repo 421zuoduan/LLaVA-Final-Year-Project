@@ -116,7 +116,7 @@ def eval_model(args):
         }
 
         # Generate 3 responses with sampling
-        for generation_idx in range(3):  # 三次多项式采样
+        for generation_idx in range(args.samples):  # 多次多项式采样
             with torch.inference_mode():
                 output_ids = model.generate(
                     input_ids,
@@ -194,6 +194,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--samples", type=int, default=3)
     args = parser.parse_args()
 
     eval_model(args)

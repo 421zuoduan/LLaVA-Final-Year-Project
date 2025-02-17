@@ -89,9 +89,14 @@ def main(args):
     else:
         is_ood_eval = False  # pylint: disable=invalid-name
         if args.compute_p_ik or args.compute_p_ik_answerable:
-            train_generations_pickle = restore('train_generations.pkl')
-            with open(train_generations_pickle.name, 'rb') as infile:
-                train_generations = pickle.load(infile)
+            # 添加命令行参数判断
+            if args.train_generations_path:
+                with open(args.train_generations_path, 'rb') as infile:
+                    train_generations = pickle.load(infile)
+            else:
+                train_generations_pickle = restore('train_generations.pkl')
+                with open(train_generations_pickle.name, 'rb') as infile:
+                    train_generations = pickle.load(infile)
 
     wandb.config.update({"is_ood_eval": is_ood_eval}, allow_val_change=True)
 
@@ -162,14 +167,23 @@ def main(args):
         metric = utils.get_metric(args.metric)
 
     # Restore outputs from `generate_answrs.py` run.
-    result_dict_pickle = restore('uncertainty_measures.pkl')
-    with open(result_dict_pickle.name, "rb") as infile:
-        result_dict = pickle.load(infile)
-    result_dict['semantic_ids'] = []
+    # 修改result_dict的加载逻辑
+    if args.result_dict_path:
+        with open(args.result_dict_path, "rb") as infile:
+            result_dict = pickle.load(infile)
+    else:
+        result_dict_pickle = restore('uncertainty_measures.pkl')
+        with open(result_dict_pickle.name, "rb") as infile:
+            result_dict = pickle.load(infile)
 
-    validation_generations_pickle = restore('validation_generations.pkl')
-    with open(validation_generations_pickle.name, 'rb') as infile:
-        validation_generations = pickle.load(infile)
+    # 修改validation_generations的加载逻辑
+    if args.validation_generations_path:
+        with open(args.validation_generations_path, 'rb') as infile:
+            validation_generations = pickle.load(infile)
+    else:
+        validation_generations_pickle = restore('validation_generations.pkl')
+        with open(validation_generations_pickle.name, 'rb') as infile:
+            validation_generations = pickle.load(infile)
 
     entropies = defaultdict(list)
     validation_embeddings, validation_is_true, validation_answerable = [], [], []
@@ -188,6 +202,7 @@ def main(args):
         full_responses = example["responses"]
         most_likely_answer = example['most_likely_answer']
 
+        # 选取同类语义中的第一个作为代表
         if not args.use_all_generations:
             if args.use_num_generations == -1:
                 raise ValueError
@@ -211,6 +226,7 @@ def main(args):
         validation_embeddings.append(most_likely_answer['embedding'])
         logging.info('validation_is_true: %f', validation_is_true[-1])
 
+        # 计算语义熵和朴素熵
         if args.compute_predictive_entropy:
             # Token log likelihoods. Shape = (n_sample, n_tokens)
             if not args.use_all_generations:
@@ -271,6 +287,7 @@ def main(args):
             logging.info('High Temp Generation:')
             logging.info(log_str, semantic_ids, log_liks_agg, entropies_fmt)
 
+        # 计算 p-true
         if args.compute_p_true_in_compute_stage:
             p_true = p_true_utils.calculate_p_true(
                 pt_model, question, most_likely_answer['response'],
@@ -345,11 +362,15 @@ def main(args):
 
 
 if __name__ == '__main__':
+    # 添加命令行参数
     parser = utils.get_parser(stages=['compute'])
-    args, unknown = parser.parse_known_args()  # pylint: disable=invalid-name
+    parser.add_argument('--train_generations_path', type=str, help='Path to train_generations.pkl')
+    parser.add_argument('--result_dict_path', type=str, help='Path to uncertainty_measures.pkl')
+    parser.add_argument('--validation_generations_path', type=str, help='Path to validation_generations.pkl')
+    args, unknown = parser.parse_known_args()
+    
     if unknown:
-        raise ValueError(f'Unkown args: {unknown}')
-
+        raise ValueError(f'Unknown args: {unknown}')
+    
     logging.info("Args: %s", args)
-
     main(args)

@@ -46,3 +46,30 @@ python llava/eval/eval_pope.py \
 ### 测试样本抽取
 
 pope 的问题数据来自 `playground/data/eval/pope/llava_pope_test.jsonl`, 其中 1-3000 行为 adversarial 数据, 3001-5910 行为 random 数据, 5911-8910 为 popular 数据. 全部近 9000 条样本跑一遍要 45min, 采样 3 次要 2h. 计划每一类取 10 个样本先把代码跑通, 然后每一类取 200 或 500 个样本
+
+### 计算语义熵
+
+经检查, `compute_uncertainty_measures.py` 的代码过于复杂了, 涉及到 wandb 的使用, 需要与原有 `generate_answer.py` 代码对应, 所以不套用他的代码了, 决定自己重新写 `compute_se_myself.py`. 新文件应当实现
+
+1. 读取 `model_vqa_loader.py` 生成的 pkl 文件, pkl 文件保存 logit, 也即 head 后经过归一化的概率
+2. 读取 `model_vqa_loader.py` 生成的 json 文件, 文件格式如下
+    ```
+    "1": {
+        "question_id": 1,
+        "prompt": "Is there a snowboard in the image?\nAnswer the question using a single word or phrase.",
+        "responses": [
+        "No",
+        "No",
+        "No"
+        ],
+        "metadata": {
+        "model": "llava-v1.5-7b"
+        }
+    },
+    ```
+3. 将 response 中的答案喂给 LLM, 让 LLM 将答案分成指定数目的类别, 将相同类别的答案的 prob 相加, 归一化后计算语义熵, 这部分原有代码实现的挺好的, 不过 xbd 的版本实现起来应该更简单, 决定读一下 xbd 的代码. xbd 在 transformers 源码里增加了语义熵计算过程, 改了 generate 函数, 我感觉这部分不用吧, 最多加个 logit 返回值的传回参数应该就够了 (yysy, 这个参数感觉也是有的). 不过纯读代码还是困难的, 那不如趁此机会重新读下 generate 源码, 看到b站有up解读, 那就拿份源码做份笔记吧.
+
+
+### 源码阅读时刻:(
+
+`model.generate` 函数在 transformers 库内的路径为 `transformers/generation/utils` 内的 GenerationMixin 类的 generate 函数, xbd 的代码也是在这里改的, xbd 用的 transformers 库是4.31.0版本, 我用的是4.37.2版本.

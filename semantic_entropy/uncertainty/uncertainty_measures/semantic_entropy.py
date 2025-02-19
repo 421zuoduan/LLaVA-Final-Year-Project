@@ -10,10 +10,10 @@ import torch.nn.functional as F
 
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from uncertainty.models.huggingface_models import HuggingfaceModel
-from uncertainty.utils import openai as oai
-from uncertainty.utils import utils
-from uncertainty.utils import deepseek
+from ..models.huggingface_models import HuggingfaceModel
+from ..utils import openai as oai
+from ..utils import utils
+from ..utils import deepseek
 
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

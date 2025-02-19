@@ -10,15 +10,15 @@ LLaVA-1.5 模型参数已经部署在 `/home/cuiruochen/model/llava-v1.5-7b` 路
 
 ## 可视化 Attention Values
 
-## Semantic Entropy 跑通
+## Semantic Entropy + LLaVA 跑通
 
 semantic entropy 仓库的 `generate_ans.py` 生成答案并保存在 pkl 文件中, 然后调用 `compute_uncertainty_measures.py` 读取 pkl 文件并计算语义熵. llava 跑 pope 调用了 `llava/eval/model_vqa_loader.py`
 
-考虑到 semantic entropy 原本的代码扩展性比较差, 数据集也读取的不多, 所以我最好在 llava 原本的代码上改, 也就是 model_vqa_loader.py; 至于X改过的语义熵, 复用性不高, 还是不借鉴了吧.
+考虑到 semantic entropy 原本的代码扩展性比较差, 数据集也读取的不多, 所以我最好在 llava 原本的代码上改, 也就是 model_vqa_loader.py; ~~至于X改过的语义熵, 复用性不高, 还是不借鉴了吧.~~
 
 ### 更改思路
 
-将各个数据集原本的代码里采样过程用 for 循环的方法改成多次多项式采样, 并将结果保存在 pkl 文件中, 保存的代码用语义熵的 `generate_answers.py`; 然后调用语义熵的 `compute_uncertainty_measures.py` 读取 pkl 文件并计算语义熵.
+将各个数据集原本的代码里采样过程用 for 循环的方法改成多次多项式采样, ~~并将结果保存在 pkl 文件中, 保存的代码用语义熵的 `generate_answers.py`; 然后调用语义熵的 `compute_uncertainty_measures.py` 读取 pkl 文件并计算语义熵.~~, model.generate 的 outputs.sequence 可以进一步得到 logit, 从而在 `model_vqa_loader.py` 计算语义熵, 无需更改 transformers 库, 也无需本地保存 pkl 文件.
 
 
 ### model_vqa_loader.py
@@ -72,4 +72,6 @@ pope 的问题数据来自 `playground/data/eval/pope/llava_pope_test.jsonl`, �
 
 ### 源码阅读时刻:(
 
-`model.generate` 函数在 transformers 库内的路径为 `transformers/generation/utils` 内的 GenerationMixin 类的 generate 函数, xbd 的代码也是在这里改的, xbd 用的 transformers 库是4.31.0版本, 我用的是4.37.2版本.
+`model.generate` 函数在 transformers 库内的路径为 `transformers/generation/utils` 内的 GenerationMixin 类的 generate 函数, xbd 的代码也是在这里改的, xbd 用的 transformers 库是4.31.0版本, 我用的是4.37.2版本. 具体细节已经上传博客
+
+### 

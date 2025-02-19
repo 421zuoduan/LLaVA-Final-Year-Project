@@ -16,6 +16,7 @@ from PIL import Image
 import math
 import pickle
 
+import transformers
 from typing import Tuple, Optional
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import EntailmentDeepSeek
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import UncertaintyMeasures
@@ -32,7 +33,6 @@ def get_chunk(lst, n, k):
 
 
 def compute_transition_scores(
-    self,
     sequences: torch.Tensor,
     scores: Tuple[torch.Tensor],
     beam_indices: Optional[torch.Tensor] = None,
@@ -123,8 +123,11 @@ def compute_transition_scores(
     scores = torch.stack(scores).reshape(len(scores), -1).transpose(0, 1)
 
     # 3. Optionally normalize the logits (across the vocab dimension)
+    # 理论上这里要传进 args, 从而替换 self.config.vocab_size, 这里从简, 直接设置 vocab_size 为 llava-1.5-7b 的 32000 了
+    vocab_size = 32000
     if normalize_logits:
-        scores = scores.reshape(-1, self.config.vocab_size, scores.shape[-1])
+        # scores = scores.reshape(-1, self.config.vocab_size, scores.shape[-1])
+        scores = scores.reshape(-1, vocab_size, scores.shape[-1])
         scores = torch.nn.functional.log_softmax(scores, dim=1)
         scores = scores.reshape(-1, scores.shape[-1])
 
@@ -138,7 +141,8 @@ def compute_transition_scores(
     beam_indices[beam_indices_mask] = 0
 
     # 6. multiply beam_indices with vocab size to gather correctly from scores
-    beam_sequence_indices = beam_indices * self.config.vocab_size
+    # beam_sequence_indices = beam_indices * self.config.vocab_size
+    beam_sequence_indices = beam_indices * vocab_size
 
     # 7. Define which indices contributed to scores
     cut_idx = sequences.shape[-1] - max_beam_length
@@ -256,7 +260,11 @@ def eval_model(args):
                     top_p=args.top_p,
                     num_beams=args.num_beams,
                     max_new_tokens=args.max_new_tokens,
-                    use_cache=True)
+                    use_cache=True,
+                    output_scores=True,
+                    output_hidden_states=True,
+                    # output_attentions=True,
+                    return_dict_in_generate=True)
                 
             n_generated = len(output_ids.scores)
             
@@ -272,7 +280,8 @@ def eval_model(args):
             all_sequences.append(output_ids.sequences)
             # all_responses.append(tokenizer.decode(output_ids.sequences[0, input_ids.shape[1]:]).strip())
             # 下面这行代码用的是 model_vqa_loader.py 源代码 batch_decode 方法, 不知道与 decode 方法有什么区别
-            output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            # output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
+            output_text = tokenizer.decode(output_ids.sequences[0, input_ids.shape[1]:]).strip()
             all_responses.append(output_text)
             
             # compute_transition_scores 得到生成序列所有 token 的 logit, 存到 log_likelihoods 里
@@ -334,7 +343,7 @@ def eval_model(args):
     with open(json_output_path, "w") as f:
         json.dump(generations, f, indent=2, ensure_ascii=False)
 
-    print(f"Results saved to:\n- {answers_file}\n- {json_output_path}\n- {pkl_output_path}")
+    print(f"Results saved to:\n- {answers_file}\n- {json_output_path}\n")
     
 
 if __name__ == "__main__":

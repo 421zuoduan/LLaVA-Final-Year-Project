@@ -76,7 +76,8 @@ class EntailmentLLM(BaseEntailment):
     def check_implication(self, text1, text2, example=None):
         if example is None:
             raise ValueError
-        prompt = self.equivalence_prompt(text1, text2, example['question'])
+        # prompt = self.equivalence_prompt(text1, text2, example['question'])
+        prompt = self.equivalence_prompt(text1, text2, example)
 
         logging.info('%s input: %s', self.name, prompt)
 

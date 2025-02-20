@@ -228,6 +228,14 @@ def eval_model(args):
     # 准备保存详细结果的字典和文件路径
     json_output_path = os.path.join(os.path.dirname(answers_file), "detailed_results.json")
     generations = {}  # 存储所有问题的详细生成结果
+    
+    # 准备 Entailment Model
+    entailment_model = EntailmentDeepSeek(entailment_cache_id=None, entailment_cache_only=False)
+    
+    # 保存所有生成的序列
+    all_sequences = []
+    all_responses = []
+    all_log_liks = []
 
     for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]
@@ -244,6 +252,14 @@ def eval_model(args):
             "responses": [],
             "metadata": {"model": model_name}
         }
+        
+        ### 保存单个样本多次采样的结果
+        # 保存所有生成的序列
+        multi_sequences = []
+        # 保存生成的自然语言文本
+        multi_responses = []
+        # 保存生成的log likelihood
+        multi_log_liks = []
 
         # Generate 3 responses with sampling
         for generation_idx in range(args.samples):  # 多次多项式采样
@@ -265,24 +281,12 @@ def eval_model(args):
                 
             n_generated = len(output_ids.scores)
             
-            # 保存所有生成的序列
-            all_sequences = []
-            # 保存生成的自然语言文本
-            all_responses = []
-            # 保存生成的log likelihood
-            all_log_liks = []
-            # 保存不确定性指标
-            uncertainty_measures = {}
-            
-            all_sequences.append(output_ids.sequences)
-            print(f"all_sequences: {all_sequences}")
-            # all_responses.append(tokenizer.decode(output_ids.sequences[0, input_ids.shape[1]:]).strip())
+            multi_sequences.append(output_ids.sequences)
+            # multi_responses.append(tokenizer.decode(output_ids.sequences[0, input_ids.shape[1]:]).strip())
             # 下面这行代码用的是 model_vqa_loader.py 源代码 batch_decode 方法, 不知道与 decode 方法有什么区别
             # output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-            print(f"output_ids.sequences.shape: {output_ids.sequences.shape}")
             output_text = tokenizer.decode(output_ids.sequences[0, 1:-1]).strip()
-            print(f"output_text: {output_text}")
-            all_responses.append(output_text)
+            multi_responses.append(output_text)
             
             # compute_transition_scores 得到生成序列所有 token 的 logit, 存到 log_likelihoods 里
             # 返回的 transition_scores 形状为 (batch_size*num_return_sequences, sequence_length)
@@ -295,7 +299,7 @@ def eval_model(args):
             else:
                 log_likelihoods = log_likelihoods[:n_generated]
                 
-            all_log_liks.append(torch.tensor(log_likelihoods))
+            multi_log_liks.append(torch.tensor(log_likelihoods))
             
             
             # store
@@ -312,36 +316,37 @@ def eval_model(args):
                 "generation_idx": generation_idx,  # 新增字段标识生成序号
                 "metadata": {}
             }) + "\n")
+            
+       
+        log_liks_agg = torch.tensor([torch.mean(log_lik) for log_lik in multi_log_liks])
+        
+        ### Compute naive entropy.
+        regular_entropy = uncertainty_computer.predictive_entropy(log_liks_agg)
+        regular_entropy_rao = uncertainty_computer.predictive_entropy_rao(log_liks_agg)
+        print(f'regular_entropy: {regular_entropy}')
+        print(f'regular_entropy_rao: {regular_entropy_rao}')
+        
+        ### Compute semantic entropy
+        semantic_ids = uncertainty_computer.get_semantic_ids(
+                        strings_list=multi_responses, model=entailment_model,
+                        strict_entailment=True, example=uncertainty_computer.question)
+        print(f'multi_responses: {multi_responses}')
+        print(f'semantic_ids: {semantic_ids}')
+        # Compute entropy from frequencies of cluster assignments, namely DSE
+        cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
+        # Compute semantic entropy.
+        log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
+        print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
+        pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
+        # entropies['semantic_entropy'].append(pe)
+        semantic_entropy = pe
+        print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
+        print(f'semantic_entropy: {semantic_entropy}')
+        
+        print("-----------------------------------------")
+            
     ans_file.close()
-    
-    log_liks_agg = torch.tensor([torch.mean(log_lik) for log_lik in all_log_liks])
-    
-    ### Compute naive entropy.
-    regular_entropy = uncertainty_computer.predictive_entropy(log_liks_agg)
-    regular_entropy_rao = uncertainty_computer.predictive_entropy_rao(log_liks_agg)
-    print(f'regular_entropy: {regular_entropy}')
-    print(f'regular_entropy_rao: {regular_entropy_rao}')
-    
-    ### Compute semantic entropy
-    # 准备 Entailment Model
-    entailment_model = EntailmentDeepSeek(entailment_cache_id=None, entailment_cache_only=False)
-    
-    semantic_ids = uncertainty_computer.get_semantic_ids(
-                    strings_list=all_responses, model=entailment_model,
-                    strict_entailment=True, example=uncertainty_computer.question)
-    print(f'questions: {uncertainty_computer.question}')
-    print(f'all_responses: {all_responses}')
-    print(f'semantic_ids: {semantic_ids}')
-    # Compute entropy from frequencies of cluster assignments, namely DSE
-    cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
-    # Compute semantic entropy.
-    log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
-    print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
-    pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
-    # entropies['semantic_entropy'].append(pe)
-    semantic_entropy = pe
-    print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
-    print(f'semantic_entropy: {semantic_entropy}')
+
     
     
     # 保存详细结果到JSON
@@ -365,7 +370,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
-    parser.add_argument("--samples", type=int, default=3)
+    parser.add_argument("--samples", type=int, default=10)
     args = parser.parse_args()
 
     eval_model(args)

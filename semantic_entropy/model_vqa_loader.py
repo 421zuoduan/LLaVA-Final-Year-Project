@@ -18,6 +18,7 @@ import pickle
 
 import transformers
 from typing import Tuple, Optional
+from sklearn import metrics
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import EntailmentDeepSeek
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import UncertaintyMeasures
 
@@ -30,6 +31,12 @@ def split_list(lst, n):
 def get_chunk(lst, n, k):
     chunks = split_list(lst, n)
     return chunks[k]
+
+
+def auroc(y_true, y_score):
+    fpr, tpr, thresholds = metrics.roc_curve(y_true, y_score)
+    del thresholds
+    return metrics.auc(fpr, tpr)
 
 
 def compute_transition_scores(
@@ -236,6 +243,8 @@ def eval_model(args):
     all_sequences = []
     all_responses = []
     all_log_liks = []
+    
+    exit()
 
     for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]
@@ -325,6 +334,7 @@ def eval_model(args):
         regular_entropy_rao = uncertainty_computer.predictive_entropy_rao(log_liks_agg)
         print(f'regular_entropy: {regular_entropy}')
         print(f'regular_entropy_rao: {regular_entropy_rao}')
+        
         
         ### Compute semantic entropy
         semantic_ids = uncertainty_computer.get_semantic_ids(

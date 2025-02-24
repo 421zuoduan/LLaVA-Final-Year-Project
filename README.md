@@ -20,6 +20,8 @@ semantic entropy 仓库的 `generate_ans.py` 生成答案并保存在 pkl 文件
 
 将各个数据集原本的代码里采样过程用 for 循环的方法改成多次多项式采样, ~~并将结果保存在 pkl 文件中, 保存的代码用语义熵的 `generate_answers.py`; 然后调用语义熵的 `compute_uncertainty_measures.py` 读取 pkl 文件并计算语义熵.~~, model.generate 的 outputs.sequence 可以进一步得到 logit, 从而在 `model_vqa_loader.py` 计算语义熵, 无需更改 transformers 库, 也无需本地保存 pkl 文件.
 
+计算出语义熵后, 想得到 AUROC, 需要先进行贪婪解码得到答案, 然后根据问题ID从 `playground/data/eval/pope` 路径下文件中提取标签, 从而得到 `validation_is_false`, 解答错误为1, 否则为0. 然后通过 AUROC 公式计算值
+
 
 ### model_vqa_loader.py
 
@@ -74,4 +76,16 @@ pope 的问题数据来自 `playground/data/eval/pope/llava_pope_test.jsonl`, �
 
 `model.generate` 函数在 transformers 库内的路径为 `transformers/generation/utils` 内的 GenerationMixin 类的 generate 函数, xbd 的代码也是在这里改的, xbd 用的 transformers 库是4.31.0版本, 我用的是4.37.2版本. 具体细节已经上传博客
 
-### 
+### 计算 AUROC
+
+语义熵给的代码, 这里 `y_score` 是置信度分数, 也即语义熵分数, y_true 是真实标签
+
+```
+def auroc(y_true, y_score):
+    fpr, tpr, thresholds = metrics.roc_curve(y_true, y_score)
+    del thresholds
+    return metrics.auc(fpr, tpr)
+```
+
+作者回复 issue 了, `'AUROC'： [validation_is_false， measure_values]`, 所以上面的 `y_true` 是答案是否预测错误, 错误为 1; `y_score` 是语义熵的值. 
+

@@ -33,7 +33,7 @@ def get_chunk(lst, n, k):
     return chunks[k]
 
 
-def auroc(y_true, y_score):
+def calculate_auroc(y_true, y_score):
     fpr, tpr, thresholds = metrics.roc_curve(y_true, y_score)
     del thresholds
     return metrics.auc(fpr, tpr)
@@ -232,6 +232,11 @@ def eval_model(args):
 
     data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
     
+    # print("questions: ", questions)
+    
+    print(data_loader)
+    
+    
     # 准备保存详细结果的字典和文件路径
     json_output_path = os.path.join(os.path.dirname(answers_file), "detailed_results.json")
     generations = {}  # 存储所有问题的详细生成结果
@@ -244,7 +249,39 @@ def eval_model(args):
     all_responses = []
     all_log_liks = []
     
-    exit()
+
+    
+    ### 获取 validation_is_false 的逻辑:
+    # 首先明确, 每个样本贪婪解码的结果与真实标签对比, 得到 validation_is_false
+    # 获取真实标签: 由于只选了一部分样本, 所以要先读取标签文件为3个列表, 在样本采样的循环内获取样本问题ID,
+    # 根据问题ID确定其分类, 做问题ID的减法后在对应列表内取真实标签
+    # 获取贪婪解码结果: 贪婪解码得到的结果保存在指定文件内, 读取该文件, 在样本采样的循环内获取样本问题ID,
+    # 根据问题ID得到贪婪解码结果
+    # 根据得到的贪婪结果解码结果与真实标签, 在样本采样的循环内计算 validation_is_false
+    
+    # 创建 validation_is_false 列表
+    validation_is_false = []
+    
+    # 获取贪婪解码的答案
+    greedy_search_answers = []
+    with open(args.greedy_search_results_file, 'r', encoding='utf-8') as f:
+        greedy_search_answers = [json.loads(line.strip()) for line in f]
+    
+    # 获取真实标签
+    for file in os.listdir(args.annotation_dir):
+        # 如果adversarial在文件名中, 则赋值给label_adv_list
+        if 'adversarial' in file:
+            with open(os.path.join(args.annotation_dir, file), 'r', encoding='utf-8') as f:
+                adv_label_list = [json.loads(line.strip()) for line in f]
+        elif 'random' in file:
+            with open(os.path.join(args.annotation_dir, file), 'r', encoding='utf-8') as f:
+                random_label_list = [json.loads(line.strip()) for line in f]
+        elif 'popular' in file:
+            with open(os.path.join(args.annotation_dir, file), 'r', encoding='utf-8') as f:
+                popular_label_list = [json.loads(line.strip()) for line in f]
+        else:
+            raise ValueError(f"Unknown file name: {file}")
+    
 
     for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]
@@ -336,28 +373,50 @@ def eval_model(args):
         print(f'regular_entropy_rao: {regular_entropy_rao}')
         
         
-        ### Compute semantic entropy
-        semantic_ids = uncertainty_computer.get_semantic_ids(
-                        strings_list=multi_responses, model=entailment_model,
-                        strict_entailment=True, example=uncertainty_computer.question)
-        print(f'multi_responses: {multi_responses}')
-        print(f'semantic_ids: {semantic_ids}')
-        # Compute entropy from frequencies of cluster assignments, namely DSE
-        cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
-        # Compute semantic entropy.
-        log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
-        print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
-        pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
-        # entropies['semantic_entropy'].append(pe)
-        semantic_entropy = pe
-        print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
-        print(f'semantic_entropy: {semantic_entropy}')
         
-        print("-----------------------------------------")
+        
+        
+        
+        # ### Compute semantic entropy
+        # semantic_ids = uncertainty_computer.get_semantic_ids(
+        #                 strings_list=multi_responses, model=entailment_model,
+        #                 strict_entailment=True, example=uncertainty_computer.question)
+        # print(f'multi_responses: {multi_responses}')
+        # print(f'semantic_ids: {semantic_ids}')
+        # # Compute entropy from frequencies of cluster assignments, namely DSE
+        # cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
+        # # Compute semantic entropy.
+        # log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
+        # print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
+        # pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
+        # # entropies['semantic_entropy'].append(pe)
+        # semantic_entropy = pe
+        # print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
+        # print(f'semantic_entropy: {semantic_entropy}')
+        
+        ### 计算 AUROC
+        if idx<10000000:
+            label = adv_label_list[idx-1]["label"]
+            pred = greedy_search_answers[idx-1]["text"]
+        elif idx<20000000 and idx>=10000000:
+            label = random_label_list[idx-10000001]["label"]
+            pred = greedy_search_answers[idx-10000001]["text"]
+        else:
+            label = popular_label_list[idx-20000001]["label"]
+            pred = greedy_search_answers[idx-20000001]["text"]
+        
+        if pred == 'Yes' and label == 'yes':
+            validation_is_false.append(0)
+        elif pred == 'No' and label == 'no':
+            validation_is_false.append(0)
+        else:
+            validation_is_false.append(1)
             
     ans_file.close()
-
     
+    # 计算 AUROC
+    auroc = calculate_auroc(validation_is_false, regular_entropy_rao)
+    print(f'auroc: {auroc}')
     
     # 保存详细结果到JSON
     with open(json_output_path, "w") as f:
@@ -381,6 +440,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
     parser.add_argument("--samples", type=int, default=10)
+    parser.add_argument("--annotation-dir", type=str, default="annotations")
+    parser.add_argument("--greedy-search-results-file", type=str, default="greedy_search_results.jsonl")
     args = parser.parse_args()
 
     eval_model(args)

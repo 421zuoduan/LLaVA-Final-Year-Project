@@ -76,6 +76,7 @@ pope 的问题数据来自 `playground/data/eval/pope/llava_pope_test.jsonl`, �
 
 `model.generate` 函数在 transformers 库内的路径为 `transformers/generation/utils` 内的 GenerationMixin 类的 generate 函数, xbd 的代码也是在这里改的, xbd 用的 transformers 库是4.31.0版本, 我用的是4.37.2版本. 具体细节已经上传博客
 
+
 ### 计算 AUROC
 
 语义熵给的代码, 这里 `y_score` 是置信度分数, 也即语义熵分数, y_true 是真实标签
@@ -88,4 +89,13 @@ def auroc(y_true, y_score):
 ```
 
 作者回复 issue 了, `'AUROC'： [validation_is_false， measure_values]`, 所以上面的 `y_true` 是答案是否预测错误, 错误为 1; `y_score` 是语义熵的值. 
+
+
+获取 validation_is_false 的逻辑:
+
+首先明确, 每个样本贪婪解码的结果与真实标签对比, 得到 validation_is_false
+
+1. 获取真实标签: 由于只选了一部分样本, 所以要先读取标签文件为3个列表, 在样本采样的循环内获取样本问题ID, 根据问题ID确定其分类, 做问题ID的减法后在对应列表内取真实标签
+2. 
+3. 获取贪婪解码结果: 贪婪解码得到的结果保存在指定文件内, 读取该文件, 在样本采样的循环内获取样本问题ID, 根据问题ID得到贪婪解码结果, 根据得到的贪婪结果解码结果与真实标签, 在样本采样的循环内计算 validation_is_false
 

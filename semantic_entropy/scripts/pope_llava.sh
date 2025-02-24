@@ -4,6 +4,8 @@ python -m semantic_entropy.model_vqa_loader \
     --question-file ./playground/data/eval/pope/llava_pope_test_15.jsonl \
     --image-folder ./playground/data/eval/pope/val2014 \
     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
+    --greedy-search-results-file ./playground/data/eval/pope/answers/greedy_search/llava-v1.5-7b.jsonl \
+    --annotation-dir ./playground/data/eval/pope/coco \
     --temperature 1 \
     --conv-mode vicuna_v1
 

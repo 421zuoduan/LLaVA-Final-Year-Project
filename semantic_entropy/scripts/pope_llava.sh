@@ -6,6 +6,7 @@ python -m semantic_entropy.model_vqa_loader \
     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
     --greedy-search-results-file ./playground/data/eval/pope/answers/greedy_search/llava-v1.5-7b.jsonl \
     --annotation-dir ./playground/data/eval/pope/coco \
+    --samples 10\
     --temperature 1 \
     --conv-mode vicuna_v1
 

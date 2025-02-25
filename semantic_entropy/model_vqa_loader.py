@@ -283,6 +283,15 @@ def eval_model(args):
             raise ValueError(f"Unknown file name: {file}")
     
 
+    # 保存所有样本的 regular_entropy
+    all_regular_entropy = []
+    # 保存所有样本的 regular_entropy_rao
+    all_regular_entropy_rao = []
+    # 保存所有样本的 semantic_entropy
+    all_semantic_entropy = []
+    # 保存所有样本的 cluster_assignment_entropy
+    all_cluster_assignment_entropy = []
+
     for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]
         cur_prompt = line["text"]
@@ -369,30 +378,31 @@ def eval_model(args):
         ### Compute naive entropy.
         regular_entropy = uncertainty_computer.predictive_entropy(log_liks_agg)
         regular_entropy_rao = uncertainty_computer.predictive_entropy_rao(log_liks_agg)
+        all_regular_entropy.append(regular_entropy)
+        all_regular_entropy_rao.append(regular_entropy_rao)
         print(f'regular_entropy: {regular_entropy}')
         print(f'regular_entropy_rao: {regular_entropy_rao}')
+                
         
+        ### Compute semantic entropy
+        semantic_ids = uncertainty_computer.get_semantic_ids(
+                        strings_list=multi_responses, model=entailment_model,
+                        strict_entailment=True, example=uncertainty_computer.question)
+        print(f'multi_responses: {multi_responses}')
+        print(f'semantic_ids: {semantic_ids}')
+        # Compute entropy from frequencies of cluster assignments, namely DSE
+        cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
+        # Compute semantic entropy.
+        log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
+        print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
+        pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
+        # entropies['semantic_entropy'].append(pe)
+        semantic_entropy = pe
+        all_semantic_entropy.append(semantic_entropy)
+        all_cluster_assignment_entropy.append(cluster_assignment_entropy)
+        print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
+        print(f'semantic_entropy: {semantic_entropy}')
         
-        
-        
-        
-        
-        # ### Compute semantic entropy
-        # semantic_ids = uncertainty_computer.get_semantic_ids(
-        #                 strings_list=multi_responses, model=entailment_model,
-        #                 strict_entailment=True, example=uncertainty_computer.question)
-        # print(f'multi_responses: {multi_responses}')
-        # print(f'semantic_ids: {semantic_ids}')
-        # # Compute entropy from frequencies of cluster assignments, namely DSE
-        # cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
-        # # Compute semantic entropy.
-        # log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
-        # print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
-        # pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
-        # # entropies['semantic_entropy'].append(pe)
-        # semantic_entropy = pe
-        # print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
-        # print(f'semantic_entropy: {semantic_entropy}')
         
         ### 计算 AUROC
         if idx<10000000:
@@ -412,11 +422,31 @@ def eval_model(args):
         else:
             validation_is_false.append(1)
             
+        print(f'cur_prompt: {cur_prompt}')
+        print(f'label: {label}, pred: {pred}')
+        print(f'validation_is_false[-1]: {validation_is_false[-1]}')
+            
     ans_file.close()
     
-    # 计算 AUROC
-    auroc = calculate_auroc(validation_is_false, regular_entropy_rao)
-    print(f'auroc: {auroc}')
+    
+    ### 计算 AUROC
+    print(f'validation_is_false: {validation_is_false}')
+    
+    auroc = calculate_auroc(validation_is_false, all_regular_entropy)
+    print(f'all_regular_entropy: {all_regular_entropy}')
+    print(f'auroc of regular_entropy: {auroc}')
+    
+    auroc = calculate_auroc(validation_is_false, all_regular_entropy_rao)
+    print(f'all_regular_entropy_rao: {all_regular_entropy_rao}')
+    print(f'auroc of regular_entropy_rao: {auroc}')
+    
+    auroc = calculate_auroc(validation_is_false, all_semantic_entropy)
+    print(f'all_semantic_entropy: {all_semantic_entropy}')
+    print(f'auroc of semantic_entropy: {auroc}')
+    
+    auroc = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)
+    print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')
+    print(f'auroc of cluster_assignment_entropy: {auroc}')
     
     # 保存详细结果到JSON
     with open(json_output_path, "w") as f:
@@ -439,7 +469,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
-    parser.add_argument("--samples", type=int, default=10)
+    parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--annotation-dir", type=str, default="annotations")
     parser.add_argument("--greedy-search-results-file", type=str, default="greedy_search_results.jsonl")
     args = parser.parse_args()

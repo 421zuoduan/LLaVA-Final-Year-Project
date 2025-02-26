@@ -230,12 +230,7 @@ def eval_model(args):
         args.conv_mode = args.conv_mode + '_mmtag'
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
-    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
-    
-    # print("questions: ", questions)
-    
-    print(data_loader)
-    
+    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)    
     
     # 准备保存详细结果的字典和文件路径
     json_output_path = os.path.join(os.path.dirname(answers_file), "detailed_results.json")
@@ -288,7 +283,9 @@ def eval_model(args):
     # 保存所有样本的 regular_entropy_rao
     all_regular_entropy_rao = []
     # 保存所有样本的 semantic_entropy
-    all_semantic_entropy = []
+    all_semantic_entropy = []    
+    # 保存所有样本的 semantic_entropy
+    all_semantic_entropy_rao = []
     # 保存所有样本的 cluster_assignment_entropy
     all_cluster_assignment_entropy = []
 
@@ -390,18 +387,27 @@ def eval_model(args):
                         strict_entailment=True, example=uncertainty_computer.question)
         print(f'multi_responses: {multi_responses}')
         print(f'semantic_ids: {semantic_ids}')
+        
         # Compute entropy from frequencies of cluster assignments, namely DSE
         cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
-        # Compute semantic entropy.
-        log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
-        print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
-        pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
-        # entropies['semantic_entropy'].append(pe)
-        semantic_entropy = pe
-        all_semantic_entropy.append(semantic_entropy)
         all_cluster_assignment_entropy.append(cluster_assignment_entropy)
         print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
+        
+        # Compute semantic_entropy.
+        log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
+        print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
+        pe = uncertainty_computer.predictive_entropy(torch.tensor(log_likelihood_per_semantic_id))
+        semantic_entropy = pe
+        all_semantic_entropy.append(semantic_entropy)
         print(f'semantic_entropy: {semantic_entropy}')
+        
+        # Compute semantic_entropy_rao
+        pe = uncertainty_computer.predictive_entropy_rao(torch.tensor(log_likelihood_per_semantic_id))
+        semantic_entropy_rao = pe
+        all_semantic_entropy_rao.append(semantic_entropy_rao)
+        print(f'semantic_entropy_rao: {semantic_entropy_rao}')
+        
+
         
         
         ### 计算 AUROC
@@ -443,6 +449,10 @@ def eval_model(args):
     auroc = calculate_auroc(validation_is_false, all_semantic_entropy)
     print(f'all_semantic_entropy: {all_semantic_entropy}')
     print(f'auroc of semantic_entropy: {auroc}')
+    
+    auroc = calculate_auroc(validation_is_false, all_semantic_entropy_rao)
+    print(f'all_semantic_entropy_rao: {all_semantic_entropy_rao}')
+    print(f'auroc of semantic_entropy_rao: {auroc}')
     
     auroc = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)
     print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')

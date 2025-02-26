@@ -239,12 +239,6 @@ def eval_model(args):
     # 准备 Entailment Model
     entailment_model = EntailmentDeepSeek(entailment_cache_id=None, entailment_cache_only=False)
     
-    # 保存所有生成的序列
-    all_sequences = []
-    all_responses = []
-    all_log_liks = []
-    
-
     
     ### 获取 validation_is_false 的逻辑:
     # 首先明确, 每个样本贪婪解码的结果与真实标签对比, 得到 validation_is_false
@@ -278,16 +272,25 @@ def eval_model(args):
             raise ValueError(f"Unknown file name: {file}")
     
 
-    # 保存所有样本的 regular_entropy
+    ### 保存所有样本多次采样的结果
+    # 保存样本序列, 回答与问题ID
+    all_question_ids = []
+    all_multi_responses = []
+    all_multi_sequences = []
+    
+    # 保存样本熵的计算结果
     all_regular_entropy = []
-    # 保存所有样本的 regular_entropy_rao
     all_regular_entropy_rao = []
-    # 保存所有样本的 semantic_entropy
     all_semantic_entropy = []    
-    # 保存所有样本的 semantic_entropy
     all_semantic_entropy_rao = []
-    # 保存所有样本的 cluster_assignment_entropy
     all_cluster_assignment_entropy = []
+    
+    #保存样本熵计算的中间变量
+    all_multi_log_liks = []
+    all_log_liks_agg = []
+    all_semantic_ids = []
+    all_log_likelihood_per_semantic_id = []
+        
 
     for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]
@@ -342,9 +345,10 @@ def eval_model(args):
             
             # compute_transition_scores 得到生成序列所有 token 的 logit, 存到 log_likelihoods 里
             # 返回的 transition_scores 形状为 (batch_size*num_return_sequences, sequence_length)
-            # 每个元素表示对应位置 token 的生成分数。可通过求和（应用长度惩罚）得到序列总分，与 model.generate() 返回的 sequences_scores 一致
+            # 每个元素表示对应位置 token 的生成分数。可通过求和（应用长度惩罚）得到序列总分，对 model.generate() 返回的 sequences_scores 做了 softmax
             transition_scores = compute_transition_scores(output_ids.sequences, output_ids.scores, normalize_logits=True)
-            log_likelihoods = [score.item() for score in transition_scores[0]]
+            log_likelihoods = [score.item() for score in transition_scores[0]]           
+            
             if len(log_likelihoods) == 1:
                 # logging.warning('Taking first and only generation for log likelihood!')
                 log_likelihoods = log_likelihoods
@@ -369,10 +373,24 @@ def eval_model(args):
                 "metadata": {}
             }) + "\n")
             
+            
+        # 保存样本问题ID, 多次采样的序列结果, 多次采样的回答结果
+        all_question_ids.append(idx)
+        all_multi_sequences.append(multi_sequences)
+        all_multi_responses.append(multi_responses)
+        
+        # 保存样本多次采样的 log_likelihoods
+        all_multi_log_liks.append(multi_log_liks)
+        
+        # 输出信息
+        print(f'multi_responses: {multi_responses}')
+        
        
         log_liks_agg = torch.tensor([torch.mean(log_lik) for log_lik in multi_log_liks])
+        #TODO: 看下 torch.mean的意思.
+        all_log_liks_agg.append(log_liks_agg)
         
-        ### Compute naive entropy.
+        ### Compute naive entropy
         regular_entropy = uncertainty_computer.predictive_entropy(log_liks_agg)
         regular_entropy_rao = uncertainty_computer.predictive_entropy_rao(log_liks_agg)
         all_regular_entropy.append(regular_entropy)
@@ -385,17 +403,23 @@ def eval_model(args):
         semantic_ids = uncertainty_computer.get_semantic_ids(
                         strings_list=multi_responses, model=entailment_model,
                         strict_entailment=True, example=uncertainty_computer.question)
-        print(f'multi_responses: {multi_responses}')
+        all_semantic_ids.append(semantic_ids)
         print(f'semantic_ids: {semantic_ids}')
         
+        
+        ### Compute dicrete entropy from cluster assignments
         # Compute entropy from frequencies of cluster assignments, namely DSE
         cluster_assignment_entropy=uncertainty_computer.cluster_assignment_entropy(semantic_ids)
         all_cluster_assignment_entropy.append(cluster_assignment_entropy)
         print(f'cluster_assignment_entropy: {cluster_assignment_entropy}')
         
-        # Compute semantic_entropy.
+        
+        ### Compute semantic entropy
         log_likelihood_per_semantic_id = uncertainty_computer.logsumexp_by_id(semantic_ids, log_liks_agg, agg='sum_normalized')
+        all_log_likelihood_per_semantic_id.append(log_likelihood_per_semantic_id)
         print(f'log_likelihood_per_semantic_id: {log_likelihood_per_semantic_id}')
+        
+        # Compute semantic_entropy
         pe = uncertainty_computer.predictive_entropy(torch.tensor(log_likelihood_per_semantic_id))
         semantic_entropy = pe
         all_semantic_entropy.append(semantic_entropy)
@@ -406,11 +430,9 @@ def eval_model(args):
         semantic_entropy_rao = pe
         all_semantic_entropy_rao.append(semantic_entropy_rao)
         print(f'semantic_entropy_rao: {semantic_entropy_rao}')
+    
         
-
-        
-        
-        ### 计算 AUROC
+        ### prepare for AUROC
         if idx<10000000:
             label = adv_label_list[idx-1]["label"]
             pred = greedy_search_answers[idx-1]["text"]
@@ -438,27 +460,62 @@ def eval_model(args):
     ### 计算 AUROC
     print(f'validation_is_false: {validation_is_false}')
     
-    auroc = calculate_auroc(validation_is_false, all_regular_entropy)
+    auroc_regular_entropy = calculate_auroc(validation_is_false, all_regular_entropy)
     print(f'all_regular_entropy: {all_regular_entropy}')
-    print(f'auroc of regular_entropy: {auroc}')
+    print(f'auroc of regular_entropy: {auroc_regular_entropy}')
     
-    auroc = calculate_auroc(validation_is_false, all_regular_entropy_rao)
+    auroc_regular_entropy_rao = calculate_auroc(validation_is_false, all_regular_entropy_rao)
     print(f'all_regular_entropy_rao: {all_regular_entropy_rao}')
-    print(f'auroc of regular_entropy_rao: {auroc}')
+    print(f'auroc of regular_entropy_rao: {auroc_regular_entropy_rao}')
     
-    auroc = calculate_auroc(validation_is_false, all_semantic_entropy)
+    auroc_semantic_entropy = calculate_auroc(validation_is_false, all_semantic_entropy)
     print(f'all_semantic_entropy: {all_semantic_entropy}')
-    print(f'auroc of semantic_entropy: {auroc}')
+    print(f'auroc of semantic_entropy: {auroc_semantic_entropy}')
     
-    auroc = calculate_auroc(validation_is_false, all_semantic_entropy_rao)
+    auroc_semantic_entropy_rao = calculate_auroc(validation_is_false, all_semantic_entropy_rao)
     print(f'all_semantic_entropy_rao: {all_semantic_entropy_rao}')
-    print(f'auroc of semantic_entropy_rao: {auroc}')
+    print(f'auroc of semantic_entropy_rao: {auroc_semantic_entropy_rao}')
     
-    auroc = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)
+    auroc_cluster_assignment_entropy = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)
     print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')
-    print(f'auroc of cluster_assignment_entropy: {auroc}')
+    print(f'auroc of cluster_assignment_entropy: {auroc_cluster_assignment_entropy}')
     
-    # 保存详细结果到JSON
+    
+    ### 保存实验数据    
+    # 保存以上变量到pkl
+    calc_data = {
+        'all_question_ids': all_question_ids,
+        'all_multi_responses': all_multi_responses,
+        'all_multi_sequences': all_multi_sequences,
+        'all_multi_log_liks': all_multi_log_liks,
+        'all_log_liks_agg': all_log_liks_agg,
+        'all_semantic_ids': all_semantic_ids,
+        'all_log_likelihood_per_semantic_id': all_log_likelihood_per_semantic_id
+    }
+    calc_data_path = os.path.join(args.pkl_folder, 'calc_values.pkl')
+    print(f"Saving calculation data to {calc_data_path}")
+    with open(calc_data_path, 'wb') as f:
+        pickle.dump(calc_data, f)
+    
+    # 保存熵值到pkl
+    entropy_data = {
+        'validation_is_false': validation_is_false,
+        'all_regular_entropy': all_regular_entropy,
+        'all_regular_entropy_rao': all_regular_entropy_rao,
+        'all_semantic_entropy': all_semantic_entropy,
+        'all_semantic_entropy_rao': all_semantic_entropy_rao,
+        'all_cluster_assignment_entropy': all_cluster_assignment_entropy,
+        'aurco_regular_entropy': auroc_regular_entropy,
+        'aurco_regular_entropy_rao': auroc_regular_entropy_rao,
+        'aurco_semantic_entropy': auroc_semantic_entropy,
+        'aurco_semantic_entropy_rao': auroc_semantic_entropy_rao,
+        'aurco_cluster_assignment_entropy': auroc_cluster_assignment_entropy
+    }
+    entropy_path = os.path.join(args.pkl_folder, 'entropy_values.pkl')
+    with open(entropy_path, 'wb') as f:
+        pickle.dump(entropy_data, f)
+    
+    # 保存输出结果到JSON
     with open(json_output_path, "w") as f:
         json.dump(generations, f, indent=2, ensure_ascii=False)
 
@@ -482,6 +539,7 @@ if __name__ == "__main__":
     parser.add_argument("--samples", type=int, default=5)
     parser.add_argument("--annotation-dir", type=str, default="annotations")
     parser.add_argument("--greedy-search-results-file", type=str, default="greedy_search_results.jsonl")
+    parser.add_argument("--pkl-folder", type=str, default="./playground/data/eval/pope/answers")
     args = parser.parse_args()
 
     eval_model(args)

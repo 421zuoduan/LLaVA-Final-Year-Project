@@ -102,3 +102,17 @@ def auroc(y_true, y_score):
 ## 结果分析
 
 SE 论文里采样次数取10, 我取了15个样本每个采样10次的AUROC结果均为1.0; 降低采样次数时, 朴素熵的值要高于语义熵, 原因待分析
+
+多次实验, 得到语义熵 AUROC 大于 朴素熵的结果, 取 300 个样本每个样本采样 10 次. 结果已保存在 `playground/data/eval/pope/answers/300_10samples`
+
+## 改进语义熵计算方法
+
+现有方法没有加入长度归一化, 计划加入 token 的长度归一化
+
+语义熵加偏移值?
+
+## 一些有趣的小知识
+
+`model.generate` 有关的 `sequence_length` 不包括标志生成开始的 <bos>, 但包括标志生成结束的 <eos>, 因为后者要计算概率, 对应到词表里
+
+`model.generate` 函数的 `output_scores` 参数设置返回的 `output_ids.scores` 是未归一化的 logit, 即输出层 softmax 前的那部分 embedding, 但是这里没有 <eos> 的 logit

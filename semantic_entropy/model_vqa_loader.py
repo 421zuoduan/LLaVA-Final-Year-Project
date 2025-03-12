@@ -38,6 +38,21 @@ def calculate_auroc(y_true, y_score):
     del thresholds
     return metrics.auc(fpr, tpr)
 
+def calculate_aurac(entropy_list, labels):
+    # 将熵值与标签组合并排序
+    combined = list(zip(entropy_list, labels))
+    combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
+    
+    # 计算需要排除的样本数（20%）
+    total = len(combined_sorted)
+    exclude_num = int(total * 0.05)
+    
+    # 保留剩余样本的标签
+    remaining_labels = [label for (_, label) in combined_sorted[exclude_num:]]
+    
+    # 计算0的比例
+    count_0 = sum(1 for label in remaining_labels if label == 0)
+    return count_0 / len(remaining_labels) if len(remaining_labels) > 0 else 0.0
 
 def compute_transition_scores(
     sequences: torch.Tensor,
@@ -347,7 +362,7 @@ def eval_model(args):
             # 返回的 transition_scores 形状为 (batch_size*num_return_sequences, sequence_length)
             # 每个元素表示对应位置 token 的生成分数。可通过求和（应用长度惩罚）得到序列总分，对 model.generate() 返回的 sequences_scores 做了 softmax
             transition_scores = compute_transition_scores(output_ids.sequences, output_ids.scores, normalize_logits=True)
-            print(f"torch.sum(transition_scores): {torch.sum(transition_scores)}")
+            # print(f"torch.sum(transition_scores): {torch.sum(transition_scores)}")
             log_likelihoods = [score.item() for score in transition_scores[0]]
             
             if len(log_likelihoods) == 1:
@@ -482,6 +497,19 @@ def eval_model(args):
     print(f'auroc of cluster_assignment_entropy: {auroc_cluster_assignment_entropy}')
     
     
+    ### 计算 AURAC
+    aurac_regular_entropy = calculate_aurac(all_regular_entropy, validation_is_false)
+    print(f'aurac of regular_entropy: {aurac_regular_entropy}')
+    aurac_regular_entropy_rao = calculate_aurac(all_regular_entropy_rao, validation_is_false)
+    print(f'aurac of regular_entropy_rao: {aurac_regular_entropy_rao}')
+    aurac_semantic_entropy = calculate_aurac(all_semantic_entropy, validation_is_false)
+    print(f'aurac of semantic_entropy: {aurac_semantic_entropy}')
+    aurac_semantic_entropy_rao = calculate_aurac(all_semantic_entropy_rao, validation_is_false)
+    print(f'aurac of semantic_entropy_rao: {aurac_semantic_entropy_rao}')
+    aurac_cluster_assignment_entropy = calculate_aurac(all_cluster_assignment_entropy, validation_is_false)
+    print(f'aurac of cluster_assignment_entropy: {aurac_cluster_assignment_entropy}')
+    
+    
     ### 保存实验数据    
     # 保存以上变量到pkl
     calc_data = {
@@ -506,11 +534,16 @@ def eval_model(args):
         'all_semantic_entropy': all_semantic_entropy,
         'all_semantic_entropy_rao': all_semantic_entropy_rao,
         'all_cluster_assignment_entropy': all_cluster_assignment_entropy,
-        'aurco_regular_entropy': auroc_regular_entropy,
-        'aurco_regular_entropy_rao': auroc_regular_entropy_rao,
-        'aurco_semantic_entropy': auroc_semantic_entropy,
-        'aurco_semantic_entropy_rao': auroc_semantic_entropy_rao,
-        'aurco_cluster_assignment_entropy': auroc_cluster_assignment_entropy
+        'auroc_regular_entropy': auroc_regular_entropy,
+        'auroc_regular_entropy_rao': auroc_regular_entropy_rao,
+        'auroc_semantic_entropy': auroc_semantic_entropy,
+        'auroc_semantic_entropy_rao': auroc_semantic_entropy_rao,
+        'auroc_cluster_assignment_entropy': auroc_cluster_assignment_entropy,
+        'aurac_regular_entropy': aurac_regular_entropy,
+        'aurac_regular_entropy_rao': aurac_regular_entropy_rao,
+        'aurac_semantic_entropy': aurac_semantic_entropy,
+        'aurac_semantic_entropy_rao': aurac_semantic_entropy_rao,
+        'aurac_cluster_assignment_entropy': aurac_cluster_assignment_entropy
     }
     entropy_path = os.path.join(args.pkl_folder, 'entropy_values.pkl')
     with open(entropy_path, 'wb') as f:

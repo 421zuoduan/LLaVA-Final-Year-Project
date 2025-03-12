@@ -9,6 +9,7 @@ def calculate_auroc(y_true, y_score):
     fpr, tpr, thresholds = metrics.roc_curve(y_true, y_score)
     del thresholds
     return metrics.auc(fpr, tpr)
+
 # 定义文件路径
 base_path = 'playground/data/eval/pope/answers/300_10samples/'
 
@@ -58,7 +59,8 @@ for idx, multi_log_liks, semantic_ids, multi_responses in zip(all_question_ids, 
     # log_liks_agg = torch.tensor(multi_log_liks)
     # print(f'multi_log_liks: {multi_log_liks}')
     
-    log_liks_agg = torch.tensor([torch.mean(log_lik)/n_generated for log_lik in multi_log_liks])
+    log_liks_agg = torch.tensor([torch.mean(log_lik) for log_lik in multi_log_liks])
+    # log_liks_agg = torch.tensor([torch.mean(log_lik)/n_generated for log_lik in multi_log_liks])
     # print(f'log_liks_agg: {log_liks_agg}')
     
     
@@ -123,7 +125,7 @@ def calculate_aurac(entropy_list, labels):
     
     # 计算需要排除的样本数（20%）
     total = len(combined_sorted)
-    exclude_num = int(total * 0.05)
+    exclude_num = int(total * 0.25)
     
     # 保留剩余样本的标签
     remaining_labels = [label for (_, label) in combined_sorted[exclude_num:]]
@@ -139,10 +141,10 @@ aurac_semantic_entropy = calculate_aurac(all_semantic_entropy, validation_is_fal
 aurac_semantic_entropy_rao = calculate_aurac(all_semantic_entropy_rao, validation_is_false)
 aurac_cluster_assignment_entropy = calculate_aurac(all_cluster_assignment_entropy, validation_is_false)
 
-print(f'AURAC of regular_entropy: {aurac_regular_entropy:.4f}')
-print(f'AURAC of regular_entropy_rao: {aurac_regular_entropy_rao:.4f}')
-print(f'AURAC of semantic_entropy: {aurac_semantic_entropy:.4f}')
-print(f'AURAC of semantic_entropy_rao: {aurac_semantic_entropy_rao:.4f}')
-print(f'AURAC of cluster_assignment_entropy: {aurac_cluster_assignment_entropy:.4f}')
+print(f'AURAC of regular_entropy: {aurac_regular_entropy}')
+print(f'AURAC of regular_entropy_rao: {aurac_regular_entropy_rao}')
+print(f'AURAC of semantic_entropy: {aurac_semantic_entropy}')
+print(f'AURAC of semantic_entropy_rao: {aurac_semantic_entropy_rao}')
+print(f'AURAC of cluster_assignment_entropy: {aurac_cluster_assignment_entropy}')
 
 

@@ -9,7 +9,6 @@ def calculate_auroc(y_true, y_score):
     fpr, tpr, thresholds = metrics.roc_curve(y_true, y_score)
     del thresholds
     return metrics.auc(fpr, tpr)
-
 # 定义文件路径
 base_path = 'playground/data/eval/pope/answers/300_10samples/'
 
@@ -50,19 +49,16 @@ all_regular_entropy_rao = []
 all_semantic_entropy = []
 all_semantic_entropy_rao = []
 
-
-# print(f'len(all_multi_log_liks): {len(all_multi_log_liks)}')
-# print(f'len(all_log_liks_agg): {len(all_log_liks_agg)}')
-# # print(f'all_multi_log_liks[0].shape: {all_multi_log_liks[0].shape}')
-# # print(f'all_log_liks_agg[0].shape: {all_log_liks_agg[0].shape}')
-# print(f'all_multi_log_liks[0]: {all_multi_log_liks[0]}')
-# print(f'all_log_liks_agg[0]: {all_log_liks_agg[0]}')
-
 for idx, multi_log_liks, semantic_ids, multi_responses in zip(all_question_ids,  all_multi_log_liks, all_semantic_ids, all_multi_responses):
+    print("--------------------------------------------------------------")
+    
+    n_generated = multi_log_liks[0].shape[0]
+    # print(f'n_generated: {n_generated}')
+    
     # log_liks_agg = torch.tensor(multi_log_liks)
     # print(f'multi_log_liks: {multi_log_liks}')
     
-    log_liks_agg = torch.tensor([torch.mean(log_lik) for log_lik in multi_log_liks])
+    log_liks_agg = torch.tensor([torch.mean(log_lik)/n_generated for log_lik in multi_log_liks])
     # print(f'log_liks_agg: {log_liks_agg}')
     
     
@@ -96,21 +92,57 @@ for idx, multi_log_liks, semantic_ids, multi_responses in zip(all_question_ids, 
 print(f'validation_is_false: {validation_is_false}')
 
 auroc_regular_entropy = calculate_auroc(validation_is_false, all_regular_entropy)
-print(f'all_regular_entropy: {all_regular_entropy}')
+# print(f'all_regular_entropy: {all_regular_entropy}')
 print(f'auroc of regular_entropy: {auroc_regular_entropy}')
 
 auroc_regular_entropy_rao = calculate_auroc(validation_is_false, all_regular_entropy_rao)
-print(f'all_regular_entropy_rao: {all_regular_entropy_rao}')
+# print(f'all_regular_entropy_rao: {all_regular_entropy_rao}')
 print(f'auroc of regular_entropy_rao: {auroc_regular_entropy_rao}')
 
 auroc_semantic_entropy = calculate_auroc(validation_is_false, all_semantic_entropy)
-print(f'all_semantic_entropy: {all_semantic_entropy}')
+# print(f'all_semantic_entropy: {all_semantic_entropy}')
 print(f'auroc of semantic_entropy: {auroc_semantic_entropy}')
 
 auroc_semantic_entropy_rao = calculate_auroc(validation_is_false, all_semantic_entropy_rao)
-print(f'all_semantic_entropy_rao: {all_semantic_entropy_rao}')
+# print(f'all_semantic_entropy_rao: {all_semantic_entropy_rao}')
 print(f'auroc of semantic_entropy_rao: {auroc_semantic_entropy_rao}')
 
 auroc_cluster_assignment_entropy = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)
-print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')
+# print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')
 print(f'auroc of cluster_assignment_entropy: {auroc_cluster_assignment_entropy}')
+
+
+### 计算 AURAC
+# AURAC 计算过程: 对于每个样本多次采样 N 次, 将正确结果的熵与错误结果的熵依次比较, 如果正确结果的熵小于错误结果的熵, 则计数器加一, 计数器的值除以 N 即为 AURAC
+# 对所有样本取均值得到最终值
+
+def calculate_aurac(entropy_list, labels):
+    # 将熵值与标签组合并排序
+    combined = list(zip(entropy_list, labels))
+    combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
+    
+    # 计算需要排除的样本数（20%）
+    total = len(combined_sorted)
+    exclude_num = int(total * 0.05)
+    
+    # 保留剩余样本的标签
+    remaining_labels = [label for (_, label) in combined_sorted[exclude_num:]]
+    
+    # 计算0的比例
+    count_0 = sum(1 for label in remaining_labels if label == 0)
+    return count_0 / len(remaining_labels) if len(remaining_labels) > 0 else 0.0
+
+# 计算各指标的AURAC
+aurac_regular_entropy = calculate_aurac(all_regular_entropy, validation_is_false)
+aurac_regular_entropy_rao = calculate_aurac(all_regular_entropy_rao, validation_is_false)
+aurac_semantic_entropy = calculate_aurac(all_semantic_entropy, validation_is_false)
+aurac_semantic_entropy_rao = calculate_aurac(all_semantic_entropy_rao, validation_is_false)
+aurac_cluster_assignment_entropy = calculate_aurac(all_cluster_assignment_entropy, validation_is_false)
+
+print(f'AURAC of regular_entropy: {aurac_regular_entropy:.4f}')
+print(f'AURAC of regular_entropy_rao: {aurac_regular_entropy_rao:.4f}')
+print(f'AURAC of semantic_entropy: {aurac_semantic_entropy:.4f}')
+print(f'AURAC of semantic_entropy_rao: {aurac_semantic_entropy_rao:.4f}')
+print(f'AURAC of cluster_assignment_entropy: {aurac_cluster_assignment_entropy:.4f}')
+
+

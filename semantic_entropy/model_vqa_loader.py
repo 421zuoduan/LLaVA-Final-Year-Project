@@ -347,7 +347,8 @@ def eval_model(args):
             # 返回的 transition_scores 形状为 (batch_size*num_return_sequences, sequence_length)
             # 每个元素表示对应位置 token 的生成分数。可通过求和（应用长度惩罚）得到序列总分，对 model.generate() 返回的 sequences_scores 做了 softmax
             transition_scores = compute_transition_scores(output_ids.sequences, output_ids.scores, normalize_logits=True)
-            log_likelihoods = [score.item() for score in transition_scores[0]]           
+            print(f"torch.sum(transition_scores): {torch.sum(transition_scores)}")
+            log_likelihoods = [score.item() for score in transition_scores[0]]
             
             if len(log_likelihoods) == 1:
                 # logging.warning('Taking first and only generation for log likelihood!')

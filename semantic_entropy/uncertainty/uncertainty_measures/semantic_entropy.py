@@ -388,6 +388,7 @@ class UncertaintyMeasures:
     def predictive_entropy_rao(self, log_probs):
         # 使用 torch
         # log_probs = torch.tensor(log_probs)
+        print(f"log_probs: {log_probs}")
         entropy = -torch.sum(torch.exp(log_probs) * log_probs)
         return entropy
     

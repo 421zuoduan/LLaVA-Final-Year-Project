@@ -111,6 +111,31 @@ SE 论文里采样次数取10, 我取了15个样本每个采样10次的AUROC结�
 
 语义熵加偏移值?
 
+## 调用豆包大模型
+
+从火山引擎调用豆包的api, 先装火山引擎的库. 不过也可以使用 OpenAI 的代码, 这边兼容了
+
+```
+pip install 'volcengine-python-sdk[ark]'
+```
+
+实现内容为:
+
+1. 在所有数据进行第一次处理后, 将熵排序
+2. 按熵排序顺序, 得到对应高熵样本的 question 和 image
+3. 将 question 和 image 喂给豆包生成 response
+4. response 与 label 检查是否正确, 得到 check_is_false 和新的 entropy_list
+5. 将 check_is_false 和 entropy_list 替换既有 validation_is_false 和 entropy list
+6. 计算新的 AUROC 和 AURAC
+7. 比对新旧 AUROC, AURAC 效果
+
+问题难点在于获取 image, 在 POPE 的代码中, 已经将经过视觉编码器的 image_tensor 与 quesition
+
+```
+for (input_ids, image_tensor, image_sizes), line in tqdm(zip(data_loader, questions), total=len(questions)):
+```
+
+
 ## 一些有趣的小知识
 
 `model.generate` 有关的 `sequence_length` 不包括标志生成开始的 <bos>, 但包括标志生成结束的 <eos>, 因为后者要计算概率, 对应到词表里

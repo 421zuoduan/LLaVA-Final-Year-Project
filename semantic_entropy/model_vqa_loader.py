@@ -21,6 +21,8 @@ from typing import Tuple, Optional
 from sklearn import metrics
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import EntailmentDeepSeek
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import UncertaintyMeasures
+from semantic_entropy.uncertainty.utils.doubao import predict_doubao
+
 
 def split_list(lst, n):
     """Split a list into n (roughly) equal-sized chunks"""
@@ -179,14 +181,80 @@ def compute_transition_scores(
     return transition_scores
 
 
+
+
+
+def check_doubao(data_loader, questions, entropy_list, labels):
+    
+    ### 对高熵样本进行二次检测
+    idx_map = {}
+    for (input_ids, image, image_sizes), line in zip(data_loader, questions):
+        idx = line["question_id"]
+        idx_map[idx] = {
+            "prompt": line["text"],
+            # "image": (image, image_sizes)
+            "image": image
+        }
+
+    # 组合并排序样本
+    combined = list(zip(entropy_list, labels, range(len(entropy_list))))
+    combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
+    total = len(combined)
+    exclude_num = int(total * 0.20)
+    
+    valid_count = 0
+    total_correct = 0
+    corrected_labels = []
+    check_is_false = []
+    
+    # 处理高熵样本
+    for sample in combined_sorted[:exclude_num]:
+        entropy, label, original_idx = sample
+        data = idx_map.get(original_idx)
+        if not data:
+            continue
+
+        try:
+            greedy_search_answers = []
+            pred = predict_doubao(data["prompt"], data["image"], temperature=0)
+            if pred == 'Yes' and label == 'yes':
+                check_is_false.append(0)
+            elif pred == 'No' and label == 'no':
+                check_is_false.append(0)
+            else:
+                check_is_false.append(1)
+            
+            # all_pred = []
+            # for generation_idx in range(args.samples):
+            #     pred = predict_doubao(data["prompt"], data["image"], temperature=1.0)
+            #     all_pred.append(pred)
+                
+                
+        except Exception as e:
+            print(f"Error processing sample {original_idx}: {str(e)}")
+            
+            
+    
+
+    # 组合最终样本（低熵样本 + 高熵正确样本）
+    remaining_labels = [sample[1] for sample in combined_sorted[exclude_num:]] + corrected_labels
+    count_0 = sum(1 for label in remaining_labels if label == 0)
+    
+    # 打印验证结果
+    print(f"高熵样本验证结果: 总数 {exclude_num}, 有效预测 {valid_count}, 正确数 {total_correct}")
+    
+    return count_0 / len(remaining_labels) if len(remaining_labels) > 0 else 0.0
+
+
 # Custom dataset class
 class CustomDataset(Dataset):
-    def __init__(self, questions, image_folder, tokenizer, image_processor, model_config):
+    def __init__(self, questions, image_folder, tokenizer, image_processor, model_config, is_check=False):
         self.questions = questions
         self.image_folder = image_folder
         self.tokenizer = tokenizer
         self.image_processor = image_processor
         self.model_config = model_config
+        self.is_check = is_check
 
     def __getitem__(self, index):
         line = self.questions[index]
@@ -203,7 +271,8 @@ class CustomDataset(Dataset):
         prompt = conv.get_prompt()
 
         image = Image.open(os.path.join(self.image_folder, image_file)).convert('RGB')
-        image_tensor = process_images([image], self.image_processor, self.model_config)[0]
+        if not self.is_check:
+            image_tensor = process_images([image], self.image_processor, self.model_config)[0]
 
         input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
 
@@ -245,7 +314,8 @@ def eval_model(args):
         args.conv_mode = args.conv_mode + '_mmtag'
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
-    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)    
+    data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
+    data_loader_check = create_data_loader(questions, args.image_folder, tokenizer, None, model.config, is_check=True)    
     
     # 准备保存详细结果的字典和文件路径
     json_output_path = os.path.join(os.path.dirname(answers_file), "detailed_results.json")
@@ -448,7 +518,7 @@ def eval_model(args):
         print(f'semantic_entropy_rao: {semantic_entropy_rao}')
     
         
-        ### prepare for AUROC
+        ### validation_is_false: prepare for AUROC
         if idx<10000000:
             label = adv_label_list[idx-1]["label"]
             pred = greedy_search_answers[idx-1]["text"]
@@ -471,6 +541,12 @@ def eval_model(args):
         print(f'validation_is_false[-1]: {validation_is_false[-1]}')
             
     ans_file.close()
+    
+    
+    
+    
+    
+    
     
     
     ### 计算 AUROC
@@ -508,6 +584,12 @@ def eval_model(args):
     print(f'aurac of semantic_entropy_rao: {aurac_semantic_entropy_rao}')
     aurac_cluster_assignment_entropy = calculate_aurac(all_cluster_assignment_entropy, validation_is_false)
     print(f'aurac of cluster_assignment_entropy: {aurac_cluster_assignment_entropy}')
+
+    
+    
+    
+    
+    
     
     
     ### 保存实验数据    

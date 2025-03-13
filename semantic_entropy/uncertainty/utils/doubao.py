@@ -14,7 +14,7 @@ def predict_doubao(prompt, image, temperature=1.0):
         raise KeyError('Need to provide DeepSeek API key in environment variable `DOUBAO_API_KEY`.')
 
     output = client.chat.completions.create(
-        model='doubao-vision-lite-32k-241015'
+        model='doubao-vision-lite-32k-241015',
         messages=[
             {"role": "system", "content": "You are a helpful assistant"},
             {"role": "user",

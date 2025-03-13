@@ -19,7 +19,7 @@ def predict_doubao(prompt, image, temperature=1.0):
             {"role": "system", "content": "You are a helpful assistant"},
             {"role": "user",
              "content": [
-                {"type": "text", "text": "这是哪里？"},
+                {"type": "text", "text": prompt + "\nAnswer the question using a single word or phrase."},
                 {
                     "type": "image_url",
                     "image_url": {

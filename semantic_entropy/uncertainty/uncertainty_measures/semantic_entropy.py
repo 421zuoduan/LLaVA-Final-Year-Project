@@ -108,7 +108,8 @@ class EntailmentLLM(BaseEntailment):
 class EntailmentDeepSeek(EntailmentLLM):
     def __init__(self, entailment_cache_id, entailment_cache_only):
         super().__init__(entailment_cache_id, entailment_cache_only)
-        self.name = 'deepseek-chat'
+        # self.name = 'deepseek-chat'
+        self.name = 'deepseek-v3-241226'
 
     def equivalence_prompt(self, text1, text2, question):
 

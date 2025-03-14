@@ -10,23 +10,21 @@ from openai import OpenAI
 #   base_url="https://api.deepseek.com/beta",
 # )
 client = OpenAI(
-    api_key=os.environ.get('DEEPSEEK_VOLCES_API_KEY'),
-    base_url="https://ark.cn-beijing.volces.com/api/v3"
+  api_key=os.environ.get('SILICON_API_KEY', False),
+  base_url="https://api.siliconflow.cn/v1/chat/completions",
 )
 
 class KeyError(Exception):
-    """DeepSeek Key not provided in environment variable."""
+    """SiliConflow Key not provided in environment variable."""
     pass
 
 
 # @retry(retry=retry_if_not_exception_type(KeyError), wait=wait_random_exponential(min=1, max=10))
-# def predict(prompt, temperature=0.0, model='deepseek-chat'):
-#     """Predict with DeepSeek."""
-def predict(prompt, temperature=0.0, model='deepseek-v3-241226'):
-    """Predict with DeepSeek."""
+def predict(prompt, temperature=0.0, model='Qwen/QwQ-32B'):
+    """Predict with QvQ."""
 
     if not client.api_key:
-        raise KeyError('Need to provide DeepSeek API key in environment variable `DEEPSEEK_API_KEY`.')
+        raise KeyError('Need to provide SiliConflow API key in environment variable `SILICON_API_KEY`.')
     # print(f'prompt2: {prompt}')
 
     output = client.chat.completions.create(

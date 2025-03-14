@@ -258,30 +258,34 @@ def check_doubao(data_loader, questions, entropy_list, labels, validation_is_fal
     """处理高熵样本的二次验证流程"""
     # ====================== 1. 构建索引映射 ======================
     idx_map = {}
-    idx_list = []
+    question_ids = []
+    idx = 0
     for (input_ids, image, image_sizes), line in zip(data_loader, questions):
-        idx = line["question_id"]
+        question_id = line["question_id"]
         idx_map[idx] = {
             "prompt": line["text"],
             "image": image,          # 图像数据（假设已预处理）
-            "original_idx": idx      # 保留原始索引用于结果更新
+            "question_id": question_id      # 保留原始索引用于结果更新
         }
-    print(f"entropy_list: {entropy_list}")
-    print(f"labels: {labels}")
+        idx = idx + 1
+        
+        question_ids.append(question_id)
+    all_idx = idx - 1
 
     # ====================== 2. 排序高熵样本 ======================
-    combined = list(zip(entropy_list, labels, range(len(entropy_list))))  # 第三个元素是连续索引
+    # combined = list(zip(entropy_list, labels, range(len(entropy_list))))  # 第三个元素是连续索引
+    combined = list(zip(entropy_list, labels, question_ids, range(all_idx)))  # 第三个元素是连续索引
     combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
     total_samples = len(combined_sorted)
-    high_entropy_num = int(total_samples * 0.50)  # 取前50%高熵样本
+    high_entropy_num = int(total_samples * 0.20)  # 取前20%高熵样本
     
     # ====================== 3. 处理高熵样本 ======================
     updated_validation = validation_is_false.copy()  # 创建副本避免直接修改原数据
     print(f"updated_validation: {updated_validation}")
     
     for sample in tqdm(combined_sorted[:high_entropy_num], desc="Processing High-Entropy Samples"):
-        original_entropy, true_label, data_idx = sample
-        data = idx_map.get(data_idx)
+        original_entropy, true_label, question_id, idx = sample
+        data = idx_map.get(question_id)
         if not data:
             continue
 
@@ -293,9 +297,11 @@ def check_doubao(data_loader, questions, entropy_list, labels, validation_is_fal
                 temperature=0.0  # 强制贪婪搜索
             ).strip().lower()  # 统一小写处理
             q = data["prompt"]
-            idx_tmp = data[""]
-            print(f"idx: {}")
-            print(f"q: {q}; doubao_response: {doubao_response}")
+            print(f"idx: {idx}")
+            print(f"question_id: {question_id}")
+            print(f"q: {q}")
+            print(f"doubao_response: {doubao_response}")
+            print(f"label: {true_label}")
             
             # ===== 3.2 验证响应是否正确 =====
             is_correct = 0
@@ -304,16 +310,15 @@ def check_doubao(data_loader, questions, entropy_list, labels, validation_is_fal
                 is_correct = 1
             
             # ===== 3.3 更新validation结果 =====
-            original_position = data["original_idx"]
             if is_correct:
-                updated_validation[original_position] = 0  # 正确预测设为0
+                updated_validation[idx] = 0  # 正确预测设为0
             else:
-                updated_validation[original_position] = 1  # 错误预测保持1
+                updated_validation[idx] = 1  # 错误预测保持1
 
         except Exception as e:
-            print(f"Error processing sample {data_idx}: {str(e)}")
+            print(f"Error processing sample {idx}: {str(e)}")
             # 错误时保留原validation结果（保持1）
-            updated_validation[data_idx] = 1
+            updated_validation[idx] = 1
 
     # ====================== 4. 返回更新后的结果 ======================
     return updated_validation, entropy_list

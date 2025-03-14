@@ -11,7 +11,7 @@ def predict_doubao(prompt, image, temperature=1.0):
     """Predict with Doubao."""
     
     if not client.api_key:
-        raise KeyError('Need to provide DeepSeek API key in environment variable `DOUBAO_API_KEY`.')
+        raise KeyError('Need to provide Doubao API key in environment variable `DOUBAO_API_KEY`.')
 
     output = client.chat.completions.create(
         model='doubao-vision-lite-32k-241015',

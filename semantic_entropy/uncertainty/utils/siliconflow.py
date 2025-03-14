@@ -11,7 +11,7 @@ from openai import OpenAI
 # )
 client = OpenAI(
   api_key=os.environ.get('SILICON_API_KEY', False),
-  base_url="https://api.siliconflow.cn/v1/chat/completions",
+  base_url="https://api.siliconflow.cn/v1",
 )
 
 class KeyError(Exception):
@@ -20,17 +20,17 @@ class KeyError(Exception):
 
 
 # @retry(retry=retry_if_not_exception_type(KeyError), wait=wait_random_exponential(min=1, max=10))
-def predict(prompt, temperature=0.0, model='Qwen/QwQ-32B'):
-    """Predict with QvQ."""
+def predict_qwen(prompt, image, temperature=1.0):
+    """Predict with qwen."""
 
     if not client.api_key:
         raise KeyError('Need to provide SiliConflow API key in environment variable `SILICON_API_KEY`.')
     # print(f'prompt2: {prompt}')
 
     output = client.chat.completions.create(
-        model=model,
+        model='Qwen/Qwen2-VL-72B-Instruct',
         messages=[
-        {"role": "system", "content": "You are a helpful assistant"},
+        {"role": "system", "content": "You are a helpful assistant. Focus on the image' s key elements: objects, scene, and context."},
         {"role": "user", "content": prompt},
         ],
         # prompt=prompt,

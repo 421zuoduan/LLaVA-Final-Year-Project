@@ -22,6 +22,7 @@ from sklearn import metrics
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import EntailmentDeepSeek
 from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import UncertaintyMeasures
 from semantic_entropy.uncertainty.utils.doubao import predict_doubao
+from semantic_entropy.uncertainty.utils.siliconflow import predict_qwen
 
 
 def split_list(lst, n):
@@ -47,7 +48,7 @@ def calculate_aurac(entropy_list, labels):
     
     # 计算需要排除的样本数（20%）
     total = len(combined_sorted)
-    exclude_num = int(total * 0.05)
+    exclude_num = int(total * 0.2)
     
     # 保留剩余样本的标签
     remaining_labels = [label for (_, label) in combined_sorted[exclude_num:]]
@@ -254,7 +255,7 @@ def compute_transition_scores(
 #     # 返回更新后的结果
 #     return new_check_is_false, new_entropy_list
 
-def check_doubao(data_loader, questions, entropy_list, labels, validation_is_false):
+def check_again(data_loader, questions, entropy_list, labels, validation_is_false):
     """处理高熵样本的二次验证流程"""
     # ====================== 1. 构建索引映射 ======================
     idx_map = {}
@@ -274,51 +275,53 @@ def check_doubao(data_loader, questions, entropy_list, labels, validation_is_fal
 
     # ====================== 2. 排序高熵样本 ======================
     # combined = list(zip(entropy_list, labels, range(len(entropy_list))))  # 第三个元素是连续索引
-    combined = list(zip(entropy_list, labels, question_ids, range(all_idx)))  # 第三个元素是连续索引
+    combined = list(zip(entropy_list, labels, question_ids, range(all_idx)))
     combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
     total_samples = len(combined_sorted)
     high_entropy_num = int(total_samples * 0.20)  # 取前20%高熵样本
+    print(f"total_samples: {total_samples}; high_entropy_num: {high_entropy_num}")
     
     # ====================== 3. 处理高熵样本 ======================
     updated_validation = validation_is_false.copy()  # 创建副本避免直接修改原数据
     print(f"updated_validation: {updated_validation}")
+    print(f"combined_sorted: {combined_sorted}")
     
     for sample in tqdm(combined_sorted[:high_entropy_num], desc="Processing High-Entropy Samples"):
         original_entropy, true_label, question_id, idx = sample
-        data = idx_map.get(question_id)
-        if not data:
-            continue
+        data = idx_map.get(idx)
+        # if not data:
+        #     continue
 
-        try:
-            # ===== 3.1 使用豆包模型进行贪婪搜索（temperature=0） =====
-            doubao_response = predict_doubao(
-                prompt=data["prompt"],
-                image=data["image"],
-                temperature=0.0  # 强制贪婪搜索
-            ).strip().lower()  # 统一小写处理
-            q = data["prompt"]
-            print(f"idx: {idx}")
-            print(f"question_id: {question_id}")
-            print(f"q: {q}")
-            print(f"doubao_response: {doubao_response}")
-            print(f"label: {true_label}")
-            
-            # ===== 3.2 验证响应是否正确 =====
-            is_correct = 0
-            if (doubao_response == "yes" and true_label == "yes") or \
-               (doubao_response == "no" and true_label == "no"):
-                is_correct = 1
-            
-            # ===== 3.3 更新validation结果 =====
-            if is_correct:
-                updated_validation[idx] = 0  # 正确预测设为0
-            else:
-                updated_validation[idx] = 1  # 错误预测保持1
+        # try:
+        # ===== 3.1 使用豆包模型进行贪婪搜索（temperature=0） =====
+        doubao_response = predict_qwen(
+            prompt=data["prompt"],
+            image=data["image"],
+            temperature=0.0  # 强制贪婪搜索
+        ).strip().lower()  # 统一小写处理
+        q = data["prompt"]
+        print(f"idx: {idx}")
+        print(f"question_id: {question_id}")
+        print(f"q: {q}")
+        print(f"doubao_response: {doubao_response}")
+        print(f"label: {true_label}")
+        
+        # ===== 3.2 验证响应是否正确 =====
+        is_correct = 0
+        if (doubao_response == "yes" and true_label == "yes") or \
+            (doubao_response == "no" and true_label == "no"):
+            is_correct = 1
+        
+        # ===== 3.3 更新validation结果 =====
+        if is_correct:
+            updated_validation[idx] = 0  # 正确预测设为0
+        else:
+            updated_validation[idx] = 1  # 错误预测保持1
 
-        except Exception as e:
-            print(f"Error processing sample {idx}: {str(e)}")
-            # 错误时保留原validation结果（保持1）
-            updated_validation[idx] = 1
+        # except Exception as e:
+        #     print(f"Error processing sample {idx}: {str(e)}")
+        #     # 错误时保留原validation结果（保持1）
+        #     updated_validation[idx] = 1
 
     # ====================== 4. 返回更新后的结果 ======================
     return updated_validation, entropy_list
@@ -679,7 +682,7 @@ def eval_model(args):
     print("----------------------二次检测-----------------------------")
     print(f"all_cluster_assignment_entropy: {all_cluster_assignment_entropy}; labels: {labels}")
     
-    new_check_is_false, new_entropy_list = check_doubao(data_loader_check, questions, all_cluster_assignment_entropy, labels, validation_is_false)
+    new_check_is_false, new_entropy_list = check_again(data_loader_check, questions, all_cluster_assignment_entropy, labels, validation_is_false)
     
     
     ### 重新计算AURAC

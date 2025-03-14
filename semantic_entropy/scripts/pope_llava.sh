@@ -17,7 +17,7 @@
 # 测试15样本能不能跑
 python -m semantic_entropy.model_vqa_loader \
     --model-path /home/wuzongqian/model/llava-v1.5-7b \
-    --question-file ./playground/data/eval/pope/llava_pope_test_6.jsonl \
+    --question-file ./playground/data/eval/pope/llava_pope_test_60.jsonl \
     --image-folder ./playground/data/eval/pope/val2014 \
     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
     --greedy-search-results-file ./playground/data/eval/pope/answers/greedy_search/llava-v1.5-7b.jsonl \

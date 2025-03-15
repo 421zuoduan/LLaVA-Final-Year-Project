@@ -182,80 +182,7 @@ def compute_transition_scores(
     return transition_scores
 
 
-
-
-
-# def check_doubao(data_loader, questions, entropy_list, labels):
-#     # 构建问题ID到数据和图像的映射
-#     idx_map = {}
-#     for (input_ids, image, image_sizes), line in zip(data_loader, questions):
-#         idx = line["question_id"]
-#         idx_map[idx] = {
-#             "prompt": line["text"],
-#             "image": image  # 假设image是处理后的图像路径或PIL.Image对象
-#         }
-
-#     # 组合并排序样本（熵从高到低）
-#     combined = list(zip(entropy_list, labels, range(len(entropy_list))))
-#     combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
-#     total = len(combined_sorted)
-#     exclude_num = int(total * 0.5)  # 处理前20%的高熵样本
-
-#     # 初始化新的结果列表（复制原始数据避免直接修改）
-#     new_entropy_list = entropy_list.copy()
-#     new_check_is_false = [1] * len(entropy_list)  # 假设初始全为错误，后续更新
-#     print(f"1111111111111111111111111111111111111111111111")
-#     print(f"combined_sorted: {combined_sorted}")
-
-#     # 处理每个高熵样本
-#     for sample in combined_sorted[:exclude_num]:
-#         entropy, label, original_idx = sample
-#         print(f"entropy: {entropy}; label: {label}; original_idx: {original_idx}")
-#         data = idx_map.get(original_idx)
-#         print(f"data: {data}")
-#         print("testtesttesttesttest")
-#         if not data:
-#             continue
-#         print("test-test-test-test-test")
-#         try:
-#             # 生成豆包模型的多次回答
-#             doubao_responses = []
-#             for _ in range(args.samples):
-#                 response = predict_doubao(data["prompt"], data["image"])
-#                 doubao_responses.append(response.strip())  # 去除前后空格
-#             print("-------------------------------------")
-#             print(f"responses: {doubao_responses}")
-
-#             # 计算新的语义熵（基于豆包生成的回答）
-#             uncertainty_computer = UncertaintyMeasures(question=data["prompt"])
-#             semantic_ids = uncertainty_computer.get_semantic_ids(
-#                 doubao_responses, 
-#                 model=EntailmentDeepSeek(),  # 可能需要实例化entailment模型
-#                 strict_entailment=True
-#             )
-#             # 使用离散语义熵（DSE）
-#             new_entropy = uncertainty_computer.cluster_assignment_entropy(semantic_ids)
-#             new_entropy_list[original_idx] = new_entropy
-
-#             # 计算多数投票结果是否正确
-#             correct_count = 0
-#             for resp in doubao_responses:
-#                 if (resp.lower() == 'yes' and label == 'yes') or \
-#                    (resp.lower() == 'no' and label == 'no'):
-#                     correct_count += 1
-#             is_correct = 1 if correct_count > (args.samples // 2) else 0
-#             new_check_is_false[original_idx] = 0 if is_correct else 1
-
-#         except Exception as e:
-#             print(f"处理样本 {original_idx} 时出错: {e}")
-#             # 保留原始结果
-#             new_entropy_list[original_idx] = entropy
-#             new_check_is_false[original_idx] = 1  # 出错时标记为错误
-
-#     # 返回更新后的结果
-#     return new_check_is_false, new_entropy_list
-
-def check_again(data_loader, questions, entropy_list, labels, validation_is_false):
+def check_again(data_loader, questions, entropy_list, labels, validation_is_false, original_preds):
     """处理高熵样本的二次验证流程"""
     # ====================== 1. 构建索引映射 ======================
     idx_map = {}
@@ -269,13 +196,12 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
             "question_id": question_id      # 保留原始索引用于结果更新
         }
         idx = idx + 1
-        
         question_ids.append(question_id)
     all_idx = idx - 1
 
     # ====================== 2. 排序高熵样本 ======================
     # combined = list(zip(entropy_list, labels, range(len(entropy_list))))  # 第三个元素是连续索引
-    combined = list(zip(entropy_list, labels, question_ids, range(all_idx)))
+    combined = list(zip(entropy_list, labels, original_preds, question_ids, range(all_idx)))
     combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
     total_samples = len(combined_sorted)
     high_entropy_num = int(total_samples * 0.20)  # 取前20%高熵样本
@@ -286,15 +212,17 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
     print(f"updated_validation: {updated_validation}")
     print(f"combined_sorted: {combined_sorted}")
     
+    all_is_correct = []
+    
     for sample in tqdm(combined_sorted[:high_entropy_num], desc="Processing High-Entropy Samples"):
-        original_entropy, true_label, question_id, idx = sample
+        original_entropy, true_label, original_pred, question_id, idx = sample
         data = idx_map.get(idx)
         # if not data:
         #     continue
 
         # try:
         # ===== 3.1 使用豆包模型进行贪婪搜索（temperature=0） =====
-        doubao_response = predict_qwen(
+        doubao_response = predict_doubao(
             prompt=data["prompt"],
             image=data["image"],
             temperature=0.0  # 强制贪婪搜索
@@ -304,6 +232,7 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
         print(f"question_id: {question_id}")
         print(f"q: {q}")
         print(f"doubao_response: {doubao_response}")
+        print(f"original_pred: {original_pred}")
         print(f"label: {true_label}")
         
         # ===== 3.2 验证响应是否正确 =====
@@ -311,6 +240,8 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
         if (doubao_response == "yes" and true_label == "yes") or \
             (doubao_response == "no" and true_label == "no"):
             is_correct = 1
+            
+        all_is_correct.append(is_correct)
         
         # ===== 3.3 更新validation结果 =====
         if is_correct:
@@ -351,13 +282,14 @@ class CustomDataset(Dataset):
         conv.append_message(conv.roles[1], None)
         prompt = conv.get_prompt()
 
-        image = Image.open(os.path.join(self.image_folder, image_file)).convert('RGB')
+        image_path = os.path.join(self.image_folder, image_file)
+        image = Image.open(image_path).convert('RGB')
         if not self.is_check:
             image_tensor = process_images([image], self.image_processor, self.model_config)[0]
 
         input_ids = tokenizer_image_token(prompt, self.tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt')
 
-        return input_ids, image_tensor if not self.is_check else image, image.size
+        return input_ids, image_path if self.is_check else image_tensor, image.size
 
     def __len__(self):
         return len(self.questions)
@@ -380,10 +312,10 @@ def collate_fn_check(batch):
 def create_data_loader(questions, image_folder, tokenizer, image_processor, model_config, batch_size=1, num_workers=4, is_check=False):
     assert batch_size == 1, "batch_size must be 1"
     dataset = CustomDataset(questions, image_folder, tokenizer, image_processor, model_config, is_check=is_check)
-    if not is_check:
-        data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn)
-    else:
+    if is_check:
         data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn_check)
+    else:
+        data_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False, collate_fn=collate_fn)
     return data_loader
 
 
@@ -453,6 +385,7 @@ def eval_model(args):
     all_multi_responses = []
     all_multi_sequences = []
     labels = []
+    original_pred = []
     
     # 保存样本熵的计算结果
     all_regular_entropy = []
@@ -620,6 +553,7 @@ def eval_model(args):
             label = popular_label_list[idx-20000001]["label"]
             pred = greedy_search_answers[idx-20000001]["text"]
         labels.append(label)
+        original_pred.append(pred)
         
         if pred == 'Yes' and label == 'yes':
             validation_is_false.append(0)
@@ -682,7 +616,7 @@ def eval_model(args):
     print("----------------------二次检测-----------------------------")
     print(f"all_cluster_assignment_entropy: {all_cluster_assignment_entropy}; labels: {labels}")
     
-    new_check_is_false, new_entropy_list = check_again(data_loader_check, questions, all_cluster_assignment_entropy, labels, validation_is_false)
+    new_check_is_false, new_entropy_list = check_again(data_loader_check, questions, all_cluster_assignment_entropy, labels, validation_is_false, original_pred)
     
     
     ### 重新计算AURAC

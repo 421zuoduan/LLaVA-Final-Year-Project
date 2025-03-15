@@ -1,23 +1,7 @@
-# # 测试 150 样本时语义熵和朴素熵的情况
-# python -m semantic_entropy.model_vqa_loader \
-#     --model-path /home/wuzongqian/model/llava-v1.5-7b \
-#     --question-file ./playground/data/eval/pope/llava_pope_test_300.jsonl \
-#     --image-folder ./playground/data/eval/pope/val2014 \
-#     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
-#     --greedy-search-results-file ./playground/data/eval/pope/answers/greedy_search/llava-v1.5-7b.jsonl \
-#     --annotation-dir ./playground/data/eval/pope/coco \
-#     --pkl-folder ./playground/data/eval/pope/answers \
-#     --samples 10\
-#     --temperature 1 \
-#     --conv-mode vicuna_v1
-
-
-
-
-# 测试15样本能不能跑
-python -m semantic_entropy.model_vqa_loader \
+# 测试 150 样本时语义熵和朴素熵的情况
+python -m semantic_entropy.model_vqa_loader_pope \
     --model-path /home/wuzongqian/model/llava-v1.5-7b \
-    --question-file ./playground/data/eval/pope/llava_pope_test_60.jsonl \
+    --question-file ./playground/data/eval/pope/llava_pope_test_300.jsonl \
     --image-folder ./playground/data/eval/pope/val2014 \
     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
     --greedy-search-results-file ./playground/data/eval/pope/answers/greedy_search/llava-v1.5-7b.jsonl \
@@ -26,6 +10,22 @@ python -m semantic_entropy.model_vqa_loader \
     --samples 10\
     --temperature 1 \
     --conv-mode vicuna_v1
+
+
+
+
+# # 测试15样本能不能跑
+# python -m semantic_entropy.model_vqa_loader \
+#     --model-path /home/wuzongqian/model/llava-v1.5-7b \
+#     --question-file ./playground/data/eval/pope/llava_pope_test_60.jsonl \
+#     --image-folder ./playground/data/eval/pope/val2014 \
+#     --answers-file ./playground/data/eval/pope/answers/llava-v1.5-7b.jsonl \
+#     --greedy-search-results-file ./playground/data/eval/pope/answers/greedy_search/llava-v1.5-7b.jsonl \
+#     --annotation-dir ./playground/data/eval/pope/coco \
+#     --pkl-folder ./playground/data/eval/pope/answers \
+#     --samples 10\
+#     --temperature 1 \
+#     --conv-mode vicuna_v1
 
 # # 测试6样本能不能跑
 # python -m semantic_entropy.model_vqa_loader \

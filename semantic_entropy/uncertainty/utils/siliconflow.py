@@ -30,7 +30,7 @@ def predict_qwen(prompt, image, temperature=1.0):
     output = client.chat.completions.create(
         model='Qwen/Qwen2-VL-72B-Instruct',
         messages=[
-        {"role": "system", "content": "You are a helpful assistant. Focus on the image' s key elements: objects, scene, and context."},
+        {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": prompt},
         ],
         # prompt=prompt,

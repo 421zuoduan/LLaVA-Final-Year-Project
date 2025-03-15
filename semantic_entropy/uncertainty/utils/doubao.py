@@ -1,6 +1,9 @@
 from volcenginesdkarkruntime import Ark
 import os
 from openai import OpenAI
+from PIL import Image
+from io import BytesIO
+import base64
 
 client = OpenAI(
     base_url="https://ark.cn-beijing.volces.com/api/v3",
@@ -13,17 +16,25 @@ def predict_doubao(prompt, image, temperature=1.0):
     if not client.api_key:
         raise KeyError('Need to provide Doubao API key in environment variable `DOUBAO_API_KEY`.')
 
+    # 这里image路径输入进来是一个tuple
+    with open(image[0], "rb") as image_file:
+        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
+    
+    # buffered = BytesIO()
+    # image.save(buffered, format="JPEG")
+    # img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
     output = client.chat.completions.create(
         model='doubao-vision-lite-32k-241015',
         messages=[
             {"role": "system", "content": "You are a helpful assistant"},
             {"role": "user",
              "content": [
-                {"type": "text", "text": prompt + "\nAnswer the question using a single word or phrase."},
+                {"type": "text", "text": prompt},
                 {
                     "type": "image_url",
                     "image_url": {
-                        "url": "https://ark-project.tos-cn-beijing.ivolces.com/images/view.jpeg"
+                        "url": f"data:image/jpeg;base64,{base64_image}"
                     },
                 },
             ],},
@@ -31,6 +42,7 @@ def predict_doubao(prompt, image, temperature=1.0):
         max_tokens=128,
         temperature=0.0,
     )
+    
     response = output.choices[0].message.content
     return response
 

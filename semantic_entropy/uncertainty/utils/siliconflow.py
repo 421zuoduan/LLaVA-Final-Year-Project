@@ -3,6 +3,8 @@ import hashlib
 from tenacity import retry, wait_random_exponential, retry_if_not_exception_type
 
 from openai import OpenAI
+from io import BytesIO
+import base64
 
 # user should set `base_url="https://api.deepseek.com/beta"` to use this feature.
 # client = OpenAI(
@@ -25,19 +27,28 @@ def predict_qwen(prompt, image, temperature=1.0):
 
     if not client.api_key:
         raise KeyError('Need to provide SiliConflow API key in environment variable `SILICON_API_KEY`.')
-    # print(f'prompt2: {prompt}')
+    
+    with open(image[0], "rb") as image_file:
+        base64_image = base64.b64encode(image_file.read()).decode("utf-8")
 
     output = client.chat.completions.create(
         model='Qwen/Qwen2-VL-72B-Instruct',
         messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": prompt},
+            {"role": "system", "content": "You are a helpful assistant"},
+            {"role": "user",
+             "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{base64_image}"
+                    },
+                },
+            ],},
         ],
-        # prompt=prompt,
         max_tokens=128,
         temperature=temperature,
     )
-    # print(f'output: {output}')
     response = output.choices[0].message.content
     return response
 

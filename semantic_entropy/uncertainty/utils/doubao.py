@@ -40,7 +40,7 @@ def predict_doubao(prompt, image, temperature=1.0):
             ],},
         ],
         max_tokens=128,
-        temperature=0.0,
+        temperature=temperature,
     )
     
     response = output.choices[0].message.content

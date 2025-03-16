@@ -35,6 +35,35 @@ def get_chunk(lst, n, k):
     chunks = split_list(lst, n)
     return chunks[k]
 
+def compare_lists(list1, list2):
+    max_len = max(len(list1), len(list2))
+    differences = []
+    both_zero = 0
+    both_one = 0
+    zero_one = 0
+    one_zero = 0
+    
+    for i in range(max_len):
+        val1 = list1[i] if i < len(list1) else None
+        val2 = list2[i] if i < len(list2) else None
+        
+        # 记录差异
+        if val1 != val2:
+            differences.append((i, val1, val2))
+        
+        # 仅当两个索引都有效时统计四类情况
+        if i < len(list1) and i < len(list2):
+            if val1 == 0 and val2 == 0:
+                both_zero += 1
+            elif val1 == 1 and val2 == 1:
+                both_one += 1
+            elif val1 == 0 and val2 == 1:
+                zero_one += 1
+            elif val1 == 1 and val2 == 0:
+                one_zero += 1
+    
+    return differences, both_zero, both_one, zero_one, one_zero
+
 
 def calculate_auroc(y_true, y_score):
     fpr, tpr, thresholds = metrics.roc_curve(y_true, y_score)
@@ -222,7 +251,7 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
 
         # try:
         # ===== 3.1 使用豆包模型进行贪婪搜索（temperature=0） =====
-        doubao_response = predict_doubao(
+        doubao_response = predict_qwen(
             prompt=data["prompt"],
             image=data["image"],
             temperature=0.0  # 强制贪婪搜索
@@ -449,7 +478,7 @@ def eval_model(args):
             # multi_responses.append(tokenizer.decode(output_ids.sequences[0, input_ids.shape[1]:]).strip())
             # 下面这行代码用的是 model_vqa_loader.py 源代码 batch_decode 方法, 不知道与 decode 方法有什么区别
             # output_text = tokenizer.batch_decode(output_ids, skip_special_tokens=True)[0].strip()
-            output_text = tokenizer.decode(output_ids.sequences[0, 1:-1]).strip()
+            output_text = tokenizer.decode(output_ids.sequences[0, 1:-1]).strip().lower()
             multi_responses.append(output_text)
             
             # compute_transition_scores 得到生成序列所有 token 的 logit, 存到 log_likelihoods 里
@@ -629,6 +658,23 @@ def eval_model(args):
     
     print(f'aurac of cluster_assignment_entropy: {aurac_cluster_assignment_entropy}')
     print(f'aurac of semantic_entropy_rao_check: {aurac_cluster_assignment_entropy_check}')
+    
+    # 执行比较并获取结果
+    diff, both_zero, both_one, zero_one, one_zero = compare_lists(validation_is_false, new_check_is_false)
+
+    # 输出差异结果
+    if diff:
+        for d in diff:
+            print(f"位置下标：{d[0]}, list1的元素：{d[1]}, list2的元素：{d[2]}")
+    else:
+        print("两个列表完全相同")
+
+    # 输出四类统计结果
+    print("\n统计结果：")
+    print(f"均为0的数量：{both_zero}")
+    print(f"均为1的数量：{both_one}")
+    print(f"list1为0且list2为1的数量：{zero_one}")
+    print(f"list1为1且list2为0的数量：{one_zero}")
     
     
     

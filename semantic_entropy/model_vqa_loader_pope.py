@@ -42,10 +42,17 @@ def compare_lists(list1, list2):
     both_one = 0
     zero_one = 0
     one_zero = 0
+    origin_right = 0
+    revised_right = 0
     
     for i in range(max_len):
         val1 = list1[i] if i < len(list1) else None
         val2 = list2[i] if i < len(list2) else None
+        
+        if val1 == 0:
+            origin_right += 1
+        if val2 == 0:
+            revised_right += 1
         
         # 记录差异
         if val1 != val2:
@@ -61,8 +68,11 @@ def compare_lists(list1, list2):
                 zero_one += 1
             elif val1 == 1 and val2 == 0:
                 one_zero += 1
+                
+    origin_acc = origin_right / max_len
+    revised_acc = revised_right / max_len
     
-    return differences, both_zero, both_one, zero_one, one_zero
+    return differences, both_zero, both_one, zero_one, one_zero, origin_acc, revised_acc
 
 
 def calculate_auroc(y_true, y_score):
@@ -590,7 +600,7 @@ def eval_model(args):
             validation_is_false.append(0)
         else:
             validation_is_false.append(1)
-            
+             
         print(f'cur_prompt: {cur_prompt}')
         print(f'label: {label}, pred: {pred}')
         print(f'validation_is_false[-1]: {validation_is_false[-1]}')
@@ -660,7 +670,7 @@ def eval_model(args):
     print(f'aurac of semantic_entropy_rao_check: {aurac_cluster_assignment_entropy_check}')
     
     # 执行比较并获取结果
-    diff, both_zero, both_one, zero_one, one_zero = compare_lists(validation_is_false, new_check_is_false)
+    diff, both_zero, both_one, zero_one, one_zero, origin_acc, revised_acc = compare_lists(validation_is_false, new_check_is_false)
 
     # 输出差异结果
     if diff:
@@ -675,6 +685,8 @@ def eval_model(args):
     print(f"均为1的数量：{both_one}")
     print(f"list1为0且list2为1的数量：{zero_one}")
     print(f"list1为1且list2为0的数量：{one_zero}")
+    print(f"原始准确率：{origin_acc}")
+    print(f"修正后准确率：{revised_acc}")
     
     
     
@@ -719,6 +731,19 @@ def eval_model(args):
     entropy_path = os.path.join(args.pkl_folder, 'entropy_values.pkl')
     with open(entropy_path, 'wb') as f:
         pickle.dump(entropy_data, f)
+        
+    check_data = {
+        'new_check_is_false': new_check_is_false,
+        'new_entropy_list': new_entropy_list,
+        'diff': diff,
+        'both_zero': both_zero,
+        'both_one': both_one,
+        'zero_one': zero_one,
+        'one_zero': one_zero,
+        'origin_acc': origin_acc,
+        'revised_acc': revised_acc
+    }
+    
     
     # 保存输出结果到JSON
     with open(json_output_path, "w") as f:

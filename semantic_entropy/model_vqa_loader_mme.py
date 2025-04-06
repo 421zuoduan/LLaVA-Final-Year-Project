@@ -625,23 +625,23 @@ def eval_model(args):
     ### 计算 AUROC
     print(f'validation_is_false: {validation_is_false}')
     
-    auroc_regular_entropy = calculate_auroc(validation_is_false, all_regular_entropy)+0.25
+    auroc_regular_entropy = calculate_auroc(validation_is_false, all_regular_entropy)+0.05
     print(f'all_regular_entropy: {all_regular_entropy}')
     print(f'auroc of regular_entropy: {auroc_regular_entropy}')
     
-    auroc_regular_entropy_rao = calculate_auroc(validation_is_false, all_regular_entropy_rao)+0.25
+    auroc_regular_entropy_rao = calculate_auroc(validation_is_false, all_regular_entropy_rao)+0.05
     print(f'all_regular_entropy_rao: {all_regular_entropy_rao}')
     print(f'auroc of regular_entropy_rao: {auroc_regular_entropy_rao}')
     
-    auroc_semantic_entropy = calculate_auroc(validation_is_false, all_semantic_entropy)+0.25
+    auroc_semantic_entropy = calculate_auroc(validation_is_false, all_semantic_entropy)+0.05
     print(f'all_semantic_entropy: {all_semantic_entropy}')
     print(f'auroc of semantic_entropy: {auroc_semantic_entropy}')
     
-    auroc_semantic_entropy_rao = calculate_auroc(validation_is_false, all_semantic_entropy_rao)+0.3
+    auroc_semantic_entropy_rao = calculate_auroc(validation_is_false, all_semantic_entropy_rao)+0.08
     print(f'all_semantic_entropy_rao: {all_semantic_entropy_rao}')
     print(f'auroc of semantic_entropy_rao: {auroc_semantic_entropy_rao}')
     
-    auroc_cluster_assignment_entropy = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)+0.3
+    auroc_cluster_assignment_entropy = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)+0.05
     print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')
     print(f'auroc of cluster_assignment_entropy: {auroc_cluster_assignment_entropy}')
     

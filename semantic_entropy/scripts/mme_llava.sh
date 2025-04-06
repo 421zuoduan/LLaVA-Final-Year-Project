@@ -7,6 +7,7 @@ python -m semantic_entropy.model_vqa_loader_mme \
     --answers-file ./playground/data/eval/MME/answers/llava-v1.5-7b.jsonl \
     --greedy-search-results-file ./playground/data/eval/MME/answers/greedy_search/llava-v1.5-7b.jsonl \
     --annotation-dir ./playground/data/eval/MME/MME_Benchmark_release_version \
+    --pkl-folder ./playground/data/eval/MME/answers \
     --samples 10\
     --temperature 0.5 \
     --conv-mode vicuna_v1

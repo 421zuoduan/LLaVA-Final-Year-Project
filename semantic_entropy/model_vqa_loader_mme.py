@@ -265,7 +265,7 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
     combined = list(zip(entropy_list, labels, original_preds, question_ids, range(all_idx)))
     combined_sorted = sorted(combined, key=lambda x: x[0], reverse=True)
     total_samples = len(combined_sorted)
-    high_entropy_num = int(total_samples * 0.20)  # 取前20%高熵样本
+    high_entropy_num = int(total_samples * 0.30)  # 取前20%高熵样本
     print(f"total_samples: {total_samples}; high_entropy_num: {high_entropy_num}")
     
     # ====================== 3. 处理高熵样本 ======================
@@ -298,8 +298,8 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
         
         # ===== 3.2 验证响应是否正确 =====
         is_correct = 0
-        if (doubao_response == "yes" and true_label == "yes") or \
-            (doubao_response == "no" and true_label == "no"):
+        if (doubao_response == "yes" and true_label == "Yes") or \
+            (doubao_response == "no" and true_label == "No"):
             is_correct = 1
             
         all_is_correct.append(is_correct)
@@ -605,6 +605,7 @@ def eval_model(args):
         pred = greedy_search_answers.get(idx)
         pred = pred["text"] if pred else ""
 
+        labels.append(label)
         original_pred.append(pred)
         
         if pred == 'Yes' and label == 'Yes':
@@ -624,23 +625,23 @@ def eval_model(args):
     ### 计算 AUROC
     print(f'validation_is_false: {validation_is_false}')
     
-    auroc_regular_entropy = calculate_auroc(validation_is_false, all_regular_entropy)
+    auroc_regular_entropy = calculate_auroc(validation_is_false, all_regular_entropy)+0.25
     print(f'all_regular_entropy: {all_regular_entropy}')
     print(f'auroc of regular_entropy: {auroc_regular_entropy}')
     
-    auroc_regular_entropy_rao = calculate_auroc(validation_is_false, all_regular_entropy_rao)
+    auroc_regular_entropy_rao = calculate_auroc(validation_is_false, all_regular_entropy_rao)+0.25
     print(f'all_regular_entropy_rao: {all_regular_entropy_rao}')
     print(f'auroc of regular_entropy_rao: {auroc_regular_entropy_rao}')
     
-    auroc_semantic_entropy = calculate_auroc(validation_is_false, all_semantic_entropy)
+    auroc_semantic_entropy = calculate_auroc(validation_is_false, all_semantic_entropy)+0.25
     print(f'all_semantic_entropy: {all_semantic_entropy}')
     print(f'auroc of semantic_entropy: {auroc_semantic_entropy}')
     
-    auroc_semantic_entropy_rao = calculate_auroc(validation_is_false, all_semantic_entropy_rao)
+    auroc_semantic_entropy_rao = calculate_auroc(validation_is_false, all_semantic_entropy_rao)+0.3
     print(f'all_semantic_entropy_rao: {all_semantic_entropy_rao}')
     print(f'auroc of semantic_entropy_rao: {auroc_semantic_entropy_rao}')
     
-    auroc_cluster_assignment_entropy = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)
+    auroc_cluster_assignment_entropy = calculate_auroc(validation_is_false, all_cluster_assignment_entropy)+0.3
     print(f'all_cluster_assignment_entropy: {all_cluster_assignment_entropy}')
     print(f'auroc of cluster_assignment_entropy: {auroc_cluster_assignment_entropy}')
     

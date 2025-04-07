@@ -25,6 +25,8 @@ from semantic_entropy.uncertainty.uncertainty_measures.semantic_entropy import U
 from semantic_entropy.uncertainty.utils.doubao import predict_doubao
 from semantic_entropy.uncertainty.utils.siliconflow import predict_qwen
 
+from llava.eval.m4c_evaluator import EvalAIAnswerProcessor
+
 def split_list(lst, n):
     """Split a list into n (roughly) equal-sized chunks"""
     chunk_size = math.ceil(len(lst) / n)  # integer division
@@ -51,6 +53,30 @@ def prompt_processor(prompt):
         assert False
 
     return question.lower()
+
+def compute_answer_scores(answer_processor, raw_answers):
+    """
+    compute the accuracy (soft score) of human answers
+    """
+    answers = [answer_processor(a) for a in raw_answers]
+    assert len(answers) == 10
+    gt_answers = list(enumerate(answers))
+    unique_answers = set(answers)
+    unique_answer_scores = {}
+
+    for unique_answer in unique_answers:
+        accs = []
+        for gt_answer in gt_answers:
+            other_answers = [item for item in gt_answers if item != gt_answer]
+            matching_answers = [
+                item for item in other_answers if item[1] == unique_answer
+            ]
+            acc = min(1, float(len(matching_answers)) / 3)
+            accs.append(acc)
+        unique_answer_scores[unique_answer] = sum(accs) / len(accs)
+
+    return unique_answer_scores
+
 
 def compare_lists(list1, list2):
     max_len = max(len(list1), len(list2))
@@ -238,7 +264,7 @@ def compute_transition_scores(
     return transition_scores
 
 
-def check_again(data_loader, questions, entropy_list, labels, validation_is_false, original_preds):
+def check_again(data_loader, answer_processor, questions, entropy_list, labels, validation_is_false, original_preds):
     """处理高熵样本的二次验证流程"""
     # ====================== 1. 构建索引映射 ======================
     idx_map = {}
@@ -292,23 +318,23 @@ def check_again(data_loader, questions, entropy_list, labels, validation_is_fals
         print(f"label: {true_label}")
         
         # ===== 3.2 验证响应是否正确 =====
-        is_correct = 0
-        if (doubao_response == "yes" and true_label == "yes") or \
-            (doubao_response == "no" and true_label == "no"):
+        processed_pred = answer_processor(doubao_response)
+        processed_gts = [answer_processor(a) for a in true_label]
+        unique_answer_scores = compute_answer_scores(answer_processor, processed_gts)
+        score = unique_answer_scores.get(processed_pred, 0.0)
+        print(f"check score: {score}")
+        print(f"check processed_pred: {processed_pred}")
+        print(f"check processed_gts: {processed_gts}")
+        print(f"check unique_answer_scores: {unique_answer_scores}")
+        
+        if score >=0.8:
             is_correct = 1
+            updated_validation[idx] = 0
+        else:
+            is_correct = 0
+            updated_validation[idx] = 1
             
         all_is_correct.append(is_correct)
-        
-        # ===== 3.3 更新validation结果 =====
-        if is_correct:
-            updated_validation[idx] = 0  # 正确预测设为0
-        else:
-            updated_validation[idx] = 1  # 错误预测保持1
-
-        # except Exception as e:
-        #     print(f"Error processing sample {idx}: {str(e)}")
-        #     # 错误时保留原validation结果（保持1）
-        #     updated_validation[idx] = 1
 
     # ====================== 4. 返回更新后的结果 ======================
     return updated_validation, entropy_list
@@ -405,13 +431,22 @@ def eval_model(args):
     validation_is_false = []
     
     # 获取贪婪解码的答案
-    greedy_search_answers = []
+    # greedy_search_answers = []
+    # with open(args.greedy_search_results_file, 'r', encoding='utf-8') as f:
+    #     greedy_search_answers = [json.loads(line.strip()) for line in f]        
+    greedy_search_answers = {}
     with open(args.greedy_search_results_file, 'r', encoding='utf-8') as f:
-        greedy_search_answers = [json.loads(line.strip()) for line in f]
+        for line in f:
+            item = json.loads(line.strip())  # 解析单行JSON
+            # 直接将 question_id 作为键存储整个对象
+            greedy_search_answers[item["question_id"]] = item 
         
     # 获取真实标签
-    annotations = json.load(open(args.annotation_file))['data']
+    annotations = json.load(open(args.annotation_dir))['data']
     annotations = {(annotation['image_id'], annotation['question'].lower()): annotation for annotation in annotations}
+    
+    # 初始化答案处理器
+    answer_processor = EvalAIAnswerProcessor()
     
     
     
@@ -581,25 +616,36 @@ def eval_model(args):
         print(f'semantic_entropy_rao: {semantic_entropy_rao}')
         
         
-        ### validation_is_false: prepare for AUROC
-        label = annotations[(idx, prompt_processor(cur_prompt))]
+        ### validation_is_false: prepare for AUROC        
+        # 在循环末尾处理正确性
+        annotation = annotations[(idx, prompt_processor(cur_prompt))]
+        gt_answers = annotation['answers']
         
-        # 获取贪婪搜索结果
-        pred = greedy_search_answers.get(idx)
-        pred = pred["text"] if pred else ""
+        # 获取当前问题的贪婪搜索预测
+        pred_entry = greedy_search_answers.get(idx, {})
+        pred_text = pred_entry.get("text", "") if pred_entry else ""
 
-        labels.append(label)
-        original_pred.append(pred)
+        # 处理预测和真实答案
+        processed_pred = answer_processor(pred_text)
+        processed_gts = [answer_processor(a) for a in gt_answers]
         
-        if pred == 'Yes' and label == 'yes':
-            validation_is_false.append(0)
-        elif pred == 'No' and label == 'no':
+        unique_answer_scores = compute_answer_scores(answer_processor, processed_gts)
+        score = unique_answer_scores.get(processed_pred, 0.0)
+        print(f"score: {score}")
+        print(f"processed_pred: {processed_pred}")
+        print(f"processed_gts: {processed_gts}")
+        print(f"unique_answer_scores: {unique_answer_scores}")
+            
+        if score >=0.8:
             validation_is_false.append(0)
         else:
             validation_is_false.append(1)
+
+        labels.append(processed_gts)
+        original_pred.append(pred_text)
              
         print(f'cur_prompt: {cur_prompt}')
-        print(f'label: {label}, pred: {pred}')
+        print(f'label: {processed_gts}, pred: {pred_text}')
         print(f'validation_is_false[-1]: {validation_is_false[-1]}')
             
     ans_file.close()
@@ -652,7 +698,7 @@ def eval_model(args):
     print("----------------------二次检测-----------------------------")
     print(f"all_cluster_assignment_entropy: {all_cluster_assignment_entropy}; labels: {labels}")
     
-    new_check_is_false, new_entropy_list = check_again(data_loader_check, questions, all_cluster_assignment_entropy, labels, validation_is_false, original_pred)
+    new_check_is_false, new_entropy_list = check_again(data_loader_check, answer_processor, questions, all_cluster_assignment_entropy, labels, validation_is_false, original_pred)
     
     
     ### 重新计算AURAC
@@ -762,6 +808,10 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--samples", type=int, default=5)
+    parser.add_argument("--annotation-dir", type=str, default="annotations")
+    parser.add_argument("--greedy-search-results-file", type=str, default="greedy_search_results.jsonl")
+    parser.add_argument("--pkl-folder", type=str, default="./playground/data/eval/pope/answers")
     args = parser.parse_args()
 
     eval_model(args)
